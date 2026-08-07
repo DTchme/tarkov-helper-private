@@ -1,0 +1,47 @@
+﻿Tarkov Helper 1.5.10 BUILD_READY v2 정적 검증 보고서
+통과: 40/40
+실패: 0
+
+[PASS] 필수 파일: BUILD_NOW.cmd
+[PASS] 필수 파일: build-release.ps1
+[PASS] 필수 파일: TarkovHelper/TarkovHelper.csproj
+[PASS] 필수 파일: TarkovHelper/Services/QuestApiRefreshService.cs
+[PASS] 필수 파일: TarkovHelper/Assets/tarkov_data.db
+[PASS] 필수 파일: TarkovHelper/Assets/DB/Data/map_configs.json
+[PASS] BUILD_NOW.cmd BOM 없음 — 40 65 63 68 6f 20 6f 66
+[PASS] BUILD_NOW.cmd CRLF
+[PASS] CMD/PowerShell 결과 ZIP 이름 일치
+[PASS] PowerShell TLS 1.2 지정
+[PASS] PowerShell .NET 8 설치 채널
+[PASS] PowerShell win-x64 자체 포함 publish
+[PASS] TarkovHelper.csproj XML 파싱
+[PASS] 대상 프레임워크 net8.0-windows — net8.0-windows
+[PASS] 프로젝트 버전 1.5.10 — 1.5.10
+[PASS] WPF 활성화 — true
+[PASS] XAML XML 파싱 (16개)
+[PASS] Assets DB JSON 파싱 (1개)
+[PASS] QuestApiRefreshService System.IO 참조
+[PASS] QuestApiRefreshService System.Net.Http 참조
+[PASS] 좌표 다운로드 취소 전파
+[PASS] DB 교체 직전 취소 확인
+[PASS] 백업 파일명 밀리초 포함
+[PASS] NullToVisibilityConverter 안전 역변환
+[PASS] 콘텐츠 포함 확인: Fonts — 1 files
+[PASS] 콘텐츠 포함 확인: Assets Icons PNG — 115 files
+[PASS] 콘텐츠 포함 확인: DB Icons WEBP — 9 files
+[PASS] 콘텐츠 포함 확인: DB Icons SVG — 10 files
+[PASS] 콘텐츠 포함 확인: DB Marker SVG — 6 files
+[PASS] 콘텐츠 포함 확인: DB Maps SVG — 12 files
+[PASS] 콘텐츠 포함 확인: DB Data JSON — 1 files
+[PASS] 선택형 사용자 맵 폴더 glob 유효 — 현재 기본 SVG 0개; DB/Maps 기본 지도 별도 포함
+[PASS] TarkovHelper/Assets/tarkov_data.db integrity_check — ok
+[PASS] TarkovHelper/Assets/tarkov_data.db foreign_key_check — 0 violations
+[PASS] TarkovHelper/Assets/tarkov_data.db 데이터 최소 수량 — {'Quests': 488, 'QuestObjectives': 1514, 'Items': 4014, 'QuestRequirements': 794}
+[PASS] Drug Trafficking 두 목표 좌표 — [('Drug Trafficking', 'Locate the hidden drug lab on Lighthouse', 'Lighthouse', '[{"X":-252.65,"Y":0.0,"Z":-1731.45,"FloorId":"Ground_Level"}]'), ('Drug Trafficking', 'Stash a WI-FI Camera in the drug lab', 'Lighthouse', '[{"X":-252.65,"Y":0.0,"Z":-1731.45,"FloorId":"Ground_Level"}]')]
+[PASS] TarkovHelper/tarkov_data.db integrity_check — ok
+[PASS] TarkovHelper/tarkov_data.db foreign_key_check — 0 violations
+[PASS] TarkovHelper/tarkov_data.db 데이터 최소 수량 — {'Quests': 488, 'QuestObjectives': 1514, 'Items': 4014, 'QuestRequirements': 794}
+[PASS] 소스 ZIP에 빌드 산출물 없음
+
+주의: 이 환경에는 .NET SDK/Windows WPF 런타임이 없어 실제 dotnet publish는 실행하지 않았습니다.
+Windows에서 BUILD_NOW.cmd를 실행하면 실제 컴파일 및 self-contained publish가 수행됩니다.

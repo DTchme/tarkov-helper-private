@@ -1,0 +1,33 @@
+TarkovHelper 1.5.10 BUILD_READY v6 - Static Validation
+
+Result: 27/27 PASS
+
+[PASS] DefaultZoom constant is 0.70
+[PASS] Initial zoom uses DefaultZoom
+[PASS] 70% exists in zoom presets
+[PASS] Zoom combo starts at DefaultZoom
+[PASS] No hard-coded SetZoom(1.0) remains
+[PASS] Map restore uses DefaultZoom
+[PASS] Map switch uses DefaultZoom
+[PASS] Reset view uses DefaultZoom
+[PASS] Fallback load zoom uses DefaultZoom
+[PASS] Min zoom unchanged
+[PASS] Max zoom unchanged
+[PASS] Marker inverse scale logic intact
+[PASS] XML parse TarkovHelper/Pages/Map/MapPage.xaml
+[PASS] XML parse TarkovHelper/TarkovHelper.csproj
+[PASS] XML parse TarkovHelper/App.xaml
+[PASS] XML parse TarkovHelper/MainWindow.xaml
+[PASS] SQLite integrity TarkovHelper/tarkov_data.db — ok
+[PASS] SQLite FK TarkovHelper/tarkov_data.db — 0 rows
+[PASS] SQLite integrity TarkovDBEditor/tarkov_data.db — ok
+[PASS] SQLite FK TarkovDBEditor/tarkov_data.db — 0 rows
+[PASS] SQLite integrity TarkovDBEditor/Additional/tarkov_data.db — ok
+[PASS] SQLite FK TarkovDBEditor/Additional/tarkov_data.db — 0 rows
+[PASS] SQLite integrity TarkovHelper/Assets/tarkov_data.db — ok
+[PASS] SQLite FK TarkovHelper/Assets/tarkov_data.db — 0 rows
+[PASS] v6 release name BUILD_NOW.cmd
+[PASS] v6 release name build-release.ps1
+[PASS] v6 release name BUILD_STATUS_KO.txt
+
+NOTE: Windows WPF dotnet publish is not executed in this Linux container. This report covers source/static, XML/JSON, SQLite, release-script, and zoom-default checks.

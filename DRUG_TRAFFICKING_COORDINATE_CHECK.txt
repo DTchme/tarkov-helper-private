@@ -1,0 +1,15 @@
+Drug Trafficking (Lighthouse) coordinate verification
+
+Quest BSG ID: 626bd75b05f287031503c7f6
+Community map GPS: left 58.15%, top 8.65%, Ground_Level
+Lighthouse SVG size: 3100 x 3700
+Expected screen point: X 1802.65, Y 320.05
+Expected app game point: X -252.65, Z -1731.45
+
+Previous bundled point:
+X -41.769640, Z -503.345419
+Screen X 1591.77, Y 1548.15
+
+Result:
+The previous marker was substantially too far south. Both the locate objective and
+WI-FI Camera stash objective now use the corrected northern train-yard point.

@@ -1,0 +1,65 @@
+name: Windows build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish TarkovHelper (win-x64)
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore dependencies
+        run: dotnet restore TarkovHelper/TarkovHelper.csproj --runtime win-x64
+
+      - name: Publish self-contained application
+        run: >-
+          dotnet publish TarkovHelper/TarkovHelper.csproj
+          --configuration Release
+          --runtime win-x64
+          --self-contained true
+          --no-restore
+          --output publish/win-x64
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:DebugType=None
+          -p:DebugSymbols=false
+          -p:PublishReadyToRun=false
+
+      - name: Verify executable
+        shell: pwsh
+        run: |
+          if (-not (Test-Path -LiteralPath 'publish/win-x64/TarkovHelper.exe')) {
+            throw 'Published executable was not created.'
+          }
+
+      - name: Create publish ZIP
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          Compress-Archive -Path 'publish/win-x64/*' -DestinationPath 'release/TarkovHelper_1.5.10_windows_v6.zip' -CompressionLevel Optimal -Force
+
+      - name: Upload publish artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TarkovHelper-1.5.10-windows-v6
+          path: release/TarkovHelper_1.5.10_windows_v6.zip
+          if-no-files-found: error
+          retention-days: 30
+

@@ -1,0 +1,285 @@
+# Map Markers Rendering PRD
+
+## Overview
+
+- **Status**: Ready for Implementation
+- **Created**: 2025-12-19
+- **Updated**: 2025-12-19
+- **Owner**: user
+- **Related Agents**: map-feature-agent
+
+## Problem Statement
+
+Map 탭에 Map Markers On/Off UI가 구현되었으나, 실제로 맵 위에 마커를 렌더링하는 기능이 미구현 상태이다.
+
+### 현재 상태
+
+**이미 완료된 부분:**
+- `Assets/DB/Icons/Markers/` 폴더에 5개의 SVG 아이콘 파일 존재
+- MapPage.xaml에 Map Markers 오버레이 패널 UI 구현 완료
+- MapSettings.cs에 마커 가시성 설정 저장/로드 기능 구현 완료
+- **tarkov_data.db에 450개의 마커 데이터가 이미 입력되어 있음**
+
+**DB 마커 현황 (총 450개):**
+| MarkerType | 개수 |
+|------------|------|
+| PmcSpawn | 195 |
+| PmcExtraction | 73 |
+| ScavExtraction | 67 |
+| BossSpawn | 33 |
+| Transit | 25 |
+| SniperScavSpawn | 17 |
+| CultistSpawn | 15 |
+| Lever | 14 |
+| RogueSpawn | 6 |
+| SharedExtraction | 3 |
+| RaiderSpawn | 2 |
+
+**문제점:**
+- `MarkerType` enum에 `CultistSpawn`, `SniperScavSpawn`, `RogueSpawn` 타입이 없음
+- `MapMarker.ParseType()`에서 해당 타입들이 기본값(PmcSpawn)으로 파싱됨
+- 실제 마커 렌더링 로직 미구현
+
+## Goals
+
+- [ ] Goal 1: MarkerType enum 및 관련 메서드 확장
+- [ ] Goal 2: MapMarkersManager 컴포넌트 구현
+- [ ] Goal 3: MapPage에 통합하여 마커 렌더링
+- [ ] Goal 4: 가시성 설정과 연동
+
+## Non-Goals (Scope Out)
+
+- 마커 위치 편집 기능 (TarkovDBEditor에서 별도 구현)
+- 마커 클릭 시 상세 정보 팝업 (1차 버전에서 제외)
+- 마커 클러스터링
+- 미니맵 오버레이에 마커 표시
+
+## Implementation Plan
+
+### Phase 1: 데이터 모델 확장 (필수)
+
+**목표**: DB의 마커 타입들을 올바르게 파싱할 수 있도록 enum 확장
+
+- [ ] Task 1.1: MarkerType enum 확장
+  - Files: `Models/MapMarker.cs`
+  - 추가할 타입: `CultistSpawn`, `SniperScavSpawn`, `RogueSpawn`
+
+- [ ] Task 1.2: MapMarker.ParseType() 확장
+  - Files: `Models/MapMarker.cs`
+  - 새 타입들에 대한 파싱 로직 추가
+
+- [ ] Task 1.3: MapMarker.GetIconFileName() 확장
+  - Files: `Models/MapMarker.cs`
+  - SVG 파일명 매핑 추가
+
+- [ ] Task 1.4: MapMarker.GetMarkerColor() 확장
+  - Files: `Models/MapMarker.cs`
+  - 새 타입들에 대한 색상 정의
+
+### Phase 2: 마커 렌더링 매니저 구현
+
+**목표**: 새 마커 타입들을 맵 위에 렌더링하는 컴포넌트 구현
+
+- [ ] Task 2.1: MapMarkersManager 클래스 생성
+  - Files: `Pages/Map/Components/MapMarkersManager.cs` (신규)
+  - 기존 MapQuestMarkerManager, MapExtractMarkerManager 패턴 참조
+
+- [ ] Task 2.2: SVG 아이콘 로딩 및 캐싱 로직 구현
+  - SharpVectors.Wpf 활용
+  - 아이콘 재사용을 위한 Dictionary 캐싱
+
+- [ ] Task 2.3: 마커 생성 메서드 구현
+  - `CreateMarker(MapMarker marker, Point screenPos)`
+  - Canvas 기반, 줌 레벨 대응, 툴팁 지원
+
+- [ ] Task 2.4: RefreshMarkers() 메서드 구현
+  - 현재 맵의 마커 로드
+  - 가시성 설정 적용
+  - 좌표 변환 및 배치
+
+### Phase 3: MapPage 통합
+
+**목표**: MapMarkersManager를 MapPage에 통합
+
+- [ ] Task 3.1: MapPage.xaml에 마커 컨테이너 추가
+  - `<Canvas x:Name="MapMarkersContainer"/>`
+  - ExtractMarkersContainer 다음에 배치
+
+- [ ] Task 3.2: MapPage.xaml.cs에 MapMarkersManager 초기화
+  - InitializeComponents()에서 초기화
+  - 필드 추가: `private MapMarkersManager? _mapMarkersManager;`
+
+- [ ] Task 3.3: 맵 변경 시 마커 새로고침
+  - CmbMapSelect_SelectionChanged에서 호출
+  - CmbFloorSelect_SelectionChanged에서 호출
+
+- [ ] Task 3.4: ChkMapMarker_Changed 이벤트에서 마커 토글
+  - 현재 주석 처리된 `RefreshMapMarkers()` 활성화
+  - 각 마커 타입별 가시성 업데이트
+
+- [ ] Task 3.5: 줌 레벨 변경 시 마커 스케일 조정
+  - OnZoomChanged에서 마커 스케일 업데이트
+
+### Phase 4: 층(Floor) 지원
+
+**목표**: 다층 맵에서 층별 마커 필터링
+
+- [ ] Task 4.1: 층별 마커 필터링 구현
+  - FloorId 기반 필터링
+  - 다른 층 마커는 반투명(Opacity 0.5) 또는 숨김 처리
+
+## Technical Decisions
+
+| Decision | Rationale | Date |
+|----------|-----------|------|
+| MarkerType enum 확장 | DB 데이터와 일치시키기 위해 필수 | 2025-12-19 |
+| 별도 MapMarkersManager 클래스 | 기존 Quest/Extract 마커와 분리하여 관리 | 2025-12-19 |
+| SVG 아이콘 사용 | 확대/축소 시 품질 유지 | 2025-12-19 |
+| Canvas 기반 렌더링 | 기존 마커 시스템과 동일한 패턴 | 2025-12-19 |
+
+## Dependencies
+
+- [x] Map Markers 오버레이 UI 구현 완료
+- [x] MapSettings에 가시성 설정 추가 완료
+- [x] SVG 아이콘 파일 추가 완료
+- [x] tarkov_data.db에 마커 좌표 데이터 입력 완료 (450개)
+- [x] MapMarkerDbService 기본 구현 완료
+
+## Architecture
+
+### MarkerType enum 확장
+
+```csharp
+public enum MarkerType
+{
+    // 기존 타입
+    PmcSpawn,
+    ScavSpawn,
+    PmcExtraction,
+    ScavExtraction,
+    SharedExtraction,
+    Transit,
+    BossSpawn,
+    RaiderSpawn,
+    Lever,
+    Keys,
+
+    // 신규 타입 (DB에 이미 데이터 존재)
+    CultistSpawn,
+    SniperScavSpawn,
+    RogueSpawn
+}
+```
+
+### ParseType 확장
+
+```csharp
+public static MarkerType ParseType(string typeStr)
+{
+    return typeStr switch
+    {
+        // ... 기존 ...
+        "CultistSpawn" => MarkerType.CultistSpawn,
+        "SniperScavSpawn" => MarkerType.SniperScavSpawn,
+        "RogueSpawn" => MarkerType.RogueSpawn,
+        _ => MarkerType.PmcSpawn
+    };
+}
+```
+
+### SVG 아이콘 매핑
+
+| MarkerType | SVG 파일 |
+|------------|----------|
+| PmcSpawn | PMC Spawn.svg |
+| SniperScavSpawn | SniperScav.svg |
+| RogueSpawn | Rogue.svg |
+| CultistSpawn | Cultist.svg |
+| Lever | Lever.svg |
+
+### 마커 색상
+
+| MarkerType | 색상 | Hex |
+|------------|------|-----|
+| PmcSpawn | Orange | #FF9800 |
+| SniperScavSpawn | Gray | #9E9E9E |
+| RogueSpawn | Red | #F44336 |
+| CultistSpawn | Purple | #9C27B0 |
+| Lever | Blue | #2196F3 |
+
+### 컴포넌트 구조
+
+```
+MapPage
+├── MapMarkersContainer (Canvas) ← 신규
+│   └── MapMarkersManager ← 신규
+│       ├── SVG Icon Cache
+│       ├── Marker Elements
+│       └── Visibility State
+├── ExtractMarkersContainer (Canvas)
+│   └── MapExtractMarkerManager
+├── QuestMarkersContainer (Canvas)
+│   └── MapQuestMarkerManager
+└── MapCanvas (맵 이미지)
+```
+
+### 렌더링 흐름
+
+```
+1. 맵 선택 변경 (CmbMapSelect_SelectionChanged)
+   ↓
+2. MapMarkerDbService.GetMarkersForMap(mapKey)
+   ↓
+3. 타입별 필터링 (MapSettings 가시성 확인)
+   ↓
+4. MapCoordinateTransformer.GameToScreen(marker.X, marker.Z)
+   ↓
+5. MapMarkersManager.CreateMarker(marker, screenPos)
+   ↓
+6. Canvas.Children.Add(markerElement)
+```
+
+## UI 토글 매핑
+
+| 체크박스 | MapSettings 속성 | MarkerType |
+|----------|------------------|------------|
+| ChkShowPmcSpawns | ShowPmcSpawns | PmcSpawn |
+| ChkShowSniperScavs | ShowSniperScavs | SniperScavSpawn |
+| ChkShowRogues | ShowRogues | RogueSpawn |
+| ChkShowCultists | ShowCultists | CultistSpawn |
+| ChkShowLeversMarker | ShowLevers | Lever |
+
+## Progress Log
+
+| Date | Update | By |
+|------|--------|-----|
+| 2025-12-19 | PRD 생성, Map Markers UI 구현 완료 | user |
+| 2025-12-19 | DB 마커 데이터 분석 완료 (450개), PRD 업데이트 | user |
+
+## Completion Criteria
+
+- [ ] MarkerType enum에 CultistSpawn, SniperScavSpawn, RogueSpawn 추가됨
+- [ ] 모든 5개 마커 타입이 맵에 올바르게 렌더링됨
+- [ ] 체크박스 On/Off로 마커 표시/숨김이 즉시 반영됨
+- [ ] 맵 변경 시 해당 맵의 마커만 표시됨
+- [ ] 줌 레벨 변경 시 마커 크기가 적절히 조정됨
+- [ ] 다층 맵에서 층 변경 시 마커가 적절히 필터링됨
+- [ ] Build 성공 (`dotnet build`)
+
+## Risks & Mitigations
+
+| Risk | Impact | Mitigation |
+|------|--------|------------|
+| SVG 아이콘 로딩 실패 | 빈 마커 표시 | 폴백 원형 마커 사용, 에러 로깅 |
+| 좌표 변환 오류 | 마커가 잘못된 위치에 표시 | 기존 Transform 로직 재사용 |
+| 많은 마커로 인한 성능 저하 | UI 프레임 드롭 | 마커 캐싱, 필요시 가시 영역만 렌더링 |
+
+---
+
+## Archive Info (완료 시 작성)
+
+- **Completed**: -
+- **Summary**: -
+- **Actual vs Planned**: -
+- **Lessons Learned**: -
+- **Follow-up Items**: -

@@ -1,0 +1,723 @@
+<UserControl x:Class="TarkovHelper.Pages.QuestListPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:components="clr-namespace:TarkovHelper.Pages.Components"
+             mc:Ignorable="d"
+             d:DesignHeight="600" d:DesignWidth="900"
+             Background="{StaticResource BackgroundDarkBrush}">
+
+    <UserControl.Resources>
+        <!-- Inherit FontFamily for all TextBlocks in this page -->
+        <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}"/>
+
+        <!-- Status Badge Colors -->
+        <SolidColorBrush x:Key="StatusLockedBrush" Color="#666666"/>
+        <SolidColorBrush x:Key="StatusActiveBrush" Color="#4CAF50"/>
+        <SolidColorBrush x:Key="StatusDoneBrush" Color="#2196F3"/>
+        <SolidColorBrush x:Key="StatusFailedBrush" Color="#F44336"/>
+
+        <!-- CheckBox Style for Filters -->
+        <Style x:Key="FilterCheckBox" TargetType="CheckBox">
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="0,0,16,0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+
+        <!-- Quest List Item Template -->
+        <DataTemplate x:Key="QuestItemTemplate">
+            <Border x:Name="ItemBorder" Padding="12,8" BorderThickness="0,0,0,1"
+                    BorderBrush="{StaticResource BorderBrush}"
+                    Background="Transparent">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="32"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Trader Icon Placeholder -->
+                    <Border Grid.Column="0" Width="28" Height="28"
+                            CornerRadius="4" Background="{StaticResource BackgroundLightBrush}"
+                            VerticalAlignment="Center">
+                        <TextBlock Text="{Binding TraderInitial}" FontSize="{DynamicResource FontSizeXSmall}" FontWeight="Bold"
+                                   Foreground="{StaticResource AccentBrush}"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+
+                    <!-- Quest Name -->
+                    <StackPanel Grid.Column="1" Margin="12,0,8,0" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding DisplayName}" FontSize="{DynamicResource FontSizeSmall}"
+                                   Foreground="{StaticResource TextPrimaryBrush}"
+                                   TextTrimming="CharacterEllipsis"/>
+                        <TextBlock Text="{Binding SubtitleName}" FontSize="{DynamicResource FontSizeTiny}"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   Visibility="{Binding SubtitleVisibility}"
+                                   TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+
+                    <!-- Kappa Badge -->
+                    <Border Grid.Column="2" Padding="4,2" CornerRadius="3"
+                            Background="#9C27B0"
+                            VerticalAlignment="Center" Margin="0,0,6,0"
+                            Visibility="Collapsed"
+                            ToolTip="카파 표시는 현재 버전에서 사용하지 않습니다.">
+                        <TextBlock Text="κ" FontSize="{DynamicResource FontSizeTiny}"
+                                   Foreground="White" FontWeight="Bold"/>
+                    </Border>
+
+                    <!-- Status Badge -->
+                    <Border Grid.Column="3" Padding="8,3" CornerRadius="3"
+                            Background="{Binding StatusBackground}"
+                            VerticalAlignment="Center" Margin="0,0,8,0">
+                        <TextBlock Text="{Binding StatusText}" FontSize="{DynamicResource FontSizeTiny}"
+                                   Foreground="White" FontWeight="SemiBold"/>
+                    </Border>
+
+                    <!-- Complete Button -->
+                    <Button Grid.Column="4" Content="완료" Padding="8,4"
+                            FontSize="{DynamicResource FontSizeTiny}" MinWidth="50"
+                            Click="CompleteButton_Click"
+                            Tag="{Binding}"
+                            Visibility="{Binding CompleteButtonVisibility}"/>
+                </Grid>
+            </Border>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+                    <Setter TargetName="ItemBorder" Property="Background" Value="{StaticResource BackgroundLightBrush}"/>
+                </DataTrigger>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter TargetName="ItemBorder" Property="Background" Value="{StaticResource BackgroundMediumBrush}"/>
+                </Trigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+        <!-- ListBox Item Container Style -->
+        <Style x:Key="QuestListBoxItem" TargetType="ListBoxItem">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Margin" Value="0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="Border" Background="{TemplateBinding Background}"
+                                BorderThickness="0,0,0,0">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Border" Property="Background" Value="{StaticResource BackgroundLightBrush}"/>
+                                <Setter TargetName="Border" Property="BorderThickness" Value="3,0,0,0"/>
+                                <Setter TargetName="Border" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Border" Property="Background" Value="{StaticResource BackgroundMediumBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Filter Bar -->
+        <Border Grid.Row="0" Background="{StaticResource BackgroundMediumBrush}"
+                CornerRadius="6" Padding="12,10" Margin="0,0,0,12">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Search Box -->
+                <TextBox x:Name="TxtSearch" Grid.Column="0"
+                         TextChanged="TxtSearch_TextChanged"
+                         Margin="0,0,16,0">
+                    <TextBox.Style>
+                        <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+                            <Setter Property="Tag" Value="퀘스트 검색..."/>
+                        </Style>
+                    </TextBox.Style>
+                </TextBox>
+
+                <!-- Filter Toggles -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <CheckBox x:Name="ChkKappaOnly" Content="카파" Visibility="Collapsed"
+                              Style="{StaticResource FilterCheckBox}"
+                              Checked="Filter_Changed" Unchecked="Filter_Changed"/>
+
+                    <CheckBox x:Name="ChkItemRequired" Content="아이템 필요"
+                              Style="{StaticResource FilterCheckBox}"
+                              Checked="Filter_Changed" Unchecked="Filter_Changed"/>
+
+                    <!-- Trader Filter -->
+                    <ComboBox x:Name="CmbTrader" Width="120" Margin="0,0,16,0"
+                              SelectionChanged="CmbTrader_SelectionChanged">
+                        <ComboBoxItem Content="모든 상인" Tag="" IsSelected="True"/>
+                    </ComboBox>
+
+                    <!-- Map Filter -->
+                    <ComboBox x:Name="CmbMap" Width="120" Margin="0,0,16,0"
+                              SelectionChanged="CmbMap_SelectionChanged">
+                        <ComboBoxItem Content="모든 지도" Tag="" IsSelected="True"/>
+                    </ComboBox>
+
+                    <!-- Status Filter -->
+                    <ComboBox x:Name="CmbStatus" Width="110"
+                              SelectionChanged="CmbStatus_SelectionChanged">
+                        <ComboBoxItem Content="진행 중" Tag="Active" IsSelected="True"/>
+                        <ComboBoxItem Content="전체" Tag="All"/>
+                        <ComboBoxItem Content="잠김" Tag="Locked"/>
+                        <ComboBoxItem Content="완료" Tag="Done"/>
+                        <ComboBoxItem Content="실패" Tag="Failed"/>
+                        <ComboBoxItem Content="수행 불가능" Tag="Unavailable"/>
+                    </ComboBox>
+
+                    <!-- Faction Toggle -->
+                    <Border Margin="16,0,0,0" Background="{StaticResource BackgroundDarkBrush}"
+                            CornerRadius="4" Padding="2">
+                        <StackPanel Orientation="Horizontal">
+                            <RadioButton x:Name="RbBear" Content="BEAR" GroupName="Faction"
+                                         Margin="0" Padding="8,4" Cursor="Hand"
+                                         Checked="Faction_Changed">
+                                <RadioButton.Template>
+                                    <ControlTemplate TargetType="RadioButton">
+                                        <Border x:Name="Border" Background="Transparent"
+                                                CornerRadius="3" Padding="{TemplateBinding Padding}">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsChecked" Value="True">
+                                                <Setter TargetName="Border" Property="Background" Value="#D84315"/>
+                                            </Trigger>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="Border" Property="Background" Value="{StaticResource BackgroundLightBrush}"/>
+                                            </Trigger>
+                                            <MultiTrigger>
+                                                <MultiTrigger.Conditions>
+                                                    <Condition Property="IsChecked" Value="True"/>
+                                                    <Condition Property="IsMouseOver" Value="True"/>
+                                                </MultiTrigger.Conditions>
+                                                <Setter TargetName="Border" Property="Background" Value="#BF360C"/>
+                                            </MultiTrigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </RadioButton.Template>
+                                <RadioButton.Foreground>
+                                    <SolidColorBrush Color="White"/>
+                                </RadioButton.Foreground>
+                            </RadioButton>
+                            <RadioButton x:Name="RbUsec" Content="USEC" GroupName="Faction"
+                                         Margin="0" Padding="8,4" Cursor="Hand"
+                                         Checked="Faction_Changed">
+                                <RadioButton.Template>
+                                    <ControlTemplate TargetType="RadioButton">
+                                        <Border x:Name="Border" Background="Transparent"
+                                                CornerRadius="3" Padding="{TemplateBinding Padding}">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsChecked" Value="True">
+                                                <Setter TargetName="Border" Property="Background" Value="#1565C0"/>
+                                            </Trigger>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="Border" Property="Background" Value="{StaticResource BackgroundLightBrush}"/>
+                                            </Trigger>
+                                            <MultiTrigger>
+                                                <MultiTrigger.Conditions>
+                                                    <Condition Property="IsChecked" Value="True"/>
+                                                    <Condition Property="IsMouseOver" Value="True"/>
+                                                </MultiTrigger.Conditions>
+                                                <Setter TargetName="Border" Property="Background" Value="#0D47A1"/>
+                                            </MultiTrigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </RadioButton.Template>
+                                <RadioButton.Foreground>
+                                    <SolidColorBrush Color="White"/>
+                                </RadioButton.Foreground>
+                            </RadioButton>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Statistics Bar -->
+        <Border Grid.Row="1" Padding="12,6" Margin="0,0,0,12">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock x:Name="TxtStats" Grid.Column="0" FontSize="{DynamicResource FontSizeXSmall}"
+                           Foreground="{StaticResource TextSecondaryBrush}"
+                           VerticalAlignment="Center"/>
+
+                <!-- Kappa progression display intentionally hidden in 1.1+/Season 1. -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Visibility="Collapsed">
+                    <TextBlock Text="κ" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
+                               Foreground="#9C27B0" VerticalAlignment="Center"
+                               Margin="0,0,6,0"/>
+                    <Grid Width="120" Height="16" VerticalAlignment="Center">
+                        <Border Background="#333333" CornerRadius="3"/>
+                        <Border x:Name="KappaGaugeBar" Background="#9C27B0"
+                                CornerRadius="3" HorizontalAlignment="Left" Width="0"/>
+                        <TextBlock x:Name="TxtKappaGauge"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   FontSize="{DynamicResource FontSizeTiny}" FontWeight="SemiBold" Foreground="White"/>
+                    </Grid>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Recommended Quests Section (Collapsible) -->
+        <components:QuestRecommendationsPanel x:Name="RecommendationsPanel" Grid.Row="2" Margin="0,0,0,12"
+                                               RecommendationClicked="RecommendationsPanel_RecommendationClicked"/>
+
+        <!-- Main Content -->
+        <Grid Grid.Row="3">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" MinWidth="300"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="350" MinWidth="250"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Quest List -->
+            <Border Grid.Column="0" Background="{StaticResource BackgroundMediumBrush}"
+                    CornerRadius="6">
+                <ListBox x:Name="LstQuests"
+                         Background="Transparent"
+                         BorderThickness="0"
+                         ItemTemplate="{StaticResource QuestItemTemplate}"
+                         ItemContainerStyle="{StaticResource QuestListBoxItem}"
+                         SelectionChanged="LstQuests_SelectionChanged"
+                         VirtualizingPanel.IsVirtualizing="True"
+                         VirtualizingPanel.VirtualizationMode="Recycling"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
+            </Border>
+
+            <!-- Splitter -->
+            <GridSplitter Grid.Column="1" Width="8" Background="Transparent"
+                          HorizontalAlignment="Center" VerticalAlignment="Stretch"/>
+
+            <!-- Detail Panel -->
+            <Border Grid.Column="2" Background="{StaticResource BackgroundMediumBrush}"
+                    CornerRadius="6" Padding="16">
+                <Grid>
+                    <!-- Empty State -->
+                    <TextBlock x:Name="TxtSelectQuest"
+                               Text="Select a quest to view details"
+                               FontSize="{DynamicResource FontSizeSmall}" Foreground="{StaticResource TextSecondaryBrush}"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+
+                    <Grid x:Name="DetailPanel" Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Fixed Header Section -->
+                        <StackPanel Grid.Row="0">
+                            <!-- Quest Title -->
+                            <TextBlock x:Name="TxtDetailName" FontSize="{DynamicResource FontSizeLarge}" FontWeight="SemiBold"
+                                       Foreground="{StaticResource AccentBrush}"
+                                       TextWrapping="Wrap" Margin="0,0,0,4"/>
+                            <TextBlock x:Name="TxtDetailSubtitle" FontSize="{DynamicResource FontSizeXSmall}"
+                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                       TextWrapping="Wrap" Margin="0,0,0,8"/>
+
+                            <!-- Actions (Top) -->
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                                <Button x:Name="BtnWiki" Content="위키" Padding="12,6"
+                                        Margin="0,0,8,0" Click="BtnWiki_Click"/>
+                                <Button x:Name="BtnShowOnMap" Content="지도에서 보기" Padding="12,6"
+                                        Margin="0,0,8,0" Click="BtnShowOnMap_Click"
+                                        ToolTip="지도에 퀘스트 마커 표시"/>
+                                <Button x:Name="BtnComplete" Content="완료 처리" Padding="12,6"
+                                        Margin="0,0,8,0" Click="BtnComplete_Click"/>
+                                <Button x:Name="BtnReset" Content="초기화" Padding="12,6"
+                                        Click="BtnReset_Click"/>
+                            </StackPanel>
+
+                            <!-- Trader & Status -->
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                <TextBlock Text="상인: " FontSize="{DynamicResource FontSizeXSmall}"
+                                           Foreground="{StaticResource TextSecondaryBrush}"/>
+                                <TextBlock x:Name="TxtDetailTrader" FontSize="{DynamicResource FontSizeXSmall}"
+                                           Foreground="{StaticResource TextPrimaryBrush}"/>
+                                <TextBlock Text="  |  상태: " FontSize="{DynamicResource FontSizeXSmall}"
+                                           Foreground="{StaticResource TextSecondaryBrush}" Margin="8,0,0,0"/>
+                                <Border x:Name="DetailStatusBadge" Padding="6,2" CornerRadius="3">
+                                    <TextBlock x:Name="TxtDetailStatus" FontSize="{DynamicResource FontSizeTiny}"
+                                               Foreground="White" FontWeight="SemiBold"/>
+                                </Border>
+                            </StackPanel>
+
+                            <!-- Map -->
+                            <StackPanel x:Name="MapInfoPanel" Orientation="Horizontal" Margin="0,0,0,16">
+                                <TextBlock Text="지도: " FontSize="{DynamicResource FontSizeXSmall}"
+                                           Foreground="{StaticResource TextSecondaryBrush}"/>
+                                <TextBlock x:Name="TxtDetailMap" FontSize="{DynamicResource FontSizeXSmall}"
+                                           Foreground="{StaticResource TextPrimaryBrush}"/>
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- Scrollable Content Section -->
+                        <ScrollViewer x:Name="DetailScrollViewer" Grid.Row="1"
+                                      VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled">
+                            <StackPanel>
+                                <!-- Required Items Section -->
+                                <StackPanel x:Name="RequiredItemsSectionWrapper" Visibility="Collapsed">
+                                    <TextBlock Text="필요 아이템" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextPrimaryBrush}"
+                                               Margin="0,0,0,8"
+                                               x:Name="TxtRequiredItemsHeader"/>
+                                    <Border Background="{StaticResource BackgroundDarkBrush}"
+                                            CornerRadius="4" Padding="12" Margin="0,0,0,16"
+                                            x:Name="RequiredItemsSection">
+                                        <ItemsControl x:Name="RequiredItemsList">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <StackPanel Orientation="Horizontal" Margin="0,4"
+                                                                Cursor="Hand"
+                                                                Opacity="{Binding ItemOpacity}"
+                                                                MouseLeftButtonDown="ItemName_Click">
+                                                        <StackPanel.Style>
+                                                            <Style TargetType="StackPanel">
+                                                                <Setter Property="Background" Value="Transparent"/>
+                                                                <Style.Triggers>
+                                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                                        <Setter Property="Background" Value="{StaticResource BackgroundMediumBrush}"/>
+                                                                    </Trigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </StackPanel.Style>
+                                                        <!-- Item Icon -->
+                                                        <Border Width="32" Height="32" CornerRadius="4"
+                                                                Background="{StaticResource BackgroundMediumBrush}"
+                                                                Margin="0,0,8,0">
+                                                            <Grid>
+                                                                <Image Source="{Binding IconSource}"
+                                                                       Width="28" Height="28"
+                                                                       Stretch="Uniform"
+                                                                       RenderOptions.BitmapScalingMode="HighQuality"/>
+                                                                <!-- Fulfilled checkmark overlay -->
+                                                                <TextBlock Text="&#x2713;" FontSize="{DynamicResource FontSizeMedium}" FontWeight="Bold"
+                                                                           Foreground="{StaticResource SuccessBrush}"
+                                                                           HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                                                           Margin="0,0,1,0"
+                                                                           Visibility="{Binding FulfilledVisibility}"/>
+                                                            </Grid>
+                                                        </Border>
+                                                        <!-- Item Info -->
+                                                        <StackPanel VerticalAlignment="Center">
+                                                            <StackPanel Orientation="Horizontal">
+                                                                <TextBlock Text="{Binding DisplayText}" FontSize="{DynamicResource FontSizeXSmall}"
+                                                                           TextDecorations="{Binding TextDecorations}">
+                                                                    <TextBlock.Style>
+                                                                        <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                                                            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+                                                                            <Style.Triggers>
+                                                                                <DataTrigger Binding="{Binding IsFulfilled}" Value="True">
+                                                                                    <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+                                                                                </DataTrigger>
+                                                                                <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=StackPanel}}" Value="True">
+                                                                                    <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
+                                                                                </DataTrigger>
+                                                                            </Style.Triggers>
+                                                                        </Style>
+                                                                    </TextBlock.Style>
+                                                                </TextBlock>
+                                                                <Border Padding="4,1" CornerRadius="2" Margin="8,0,0,0"
+                                                                        Background="{StaticResource WarningBrush}"
+                                                                        Visibility="{Binding FirVisibility}">
+                                                                    <TextBlock Text="FIR" FontSize="{DynamicResource FontSizeTiny}" Foreground="White"
+                                                                               ToolTip="레이드에서 발견 필요 (Found in Raid)"/>
+                                                                </Border>
+                                                            </StackPanel>
+                                                            <TextBlock Text="{Binding RequirementType}" FontSize="{DynamicResource FontSizeTiny}"
+                                                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                                                       Visibility="{Binding RequirementTypeVisibility}"/>
+                                                        </StackPanel>
+                                                    </StackPanel>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </Border>
+                                </StackPanel>
+
+                                <!-- Kappa Progress Section (for Collector quest) -->
+                                <StackPanel x:Name="KappaProgressSection" Visibility="Collapsed" Margin="0,0,0,16">
+                                    <TextBlock Text="카파 진행도" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextPrimaryBrush}"
+                                               Margin="0,0,0,8"/>
+                                    <Border Background="{StaticResource BackgroundDarkBrush}"
+                                            CornerRadius="4" Padding="12">
+                                        <StackPanel>
+                                            <!-- Progress Text -->
+                                            <TextBlock x:Name="TxtKappaProgress" FontSize="{DynamicResource FontSizeSmall}"
+                                                       Foreground="{StaticResource TextPrimaryBrush}"
+                                                       Margin="0,0,0,8"/>
+                                            <!-- Progress Bar -->
+                                            <Grid Height="20" Margin="0,0,0,8">
+                                                <Border Background="#333333" CornerRadius="4"/>
+                                                <Border x:Name="KappaProgressBar" Background="#9C27B0"
+                                                        CornerRadius="4" HorizontalAlignment="Left"/>
+                                                <TextBlock x:Name="TxtKappaProgressPercent"
+                                                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                           FontSize="{DynamicResource FontSizeTiny}" FontWeight="SemiBold" Foreground="White"/>
+                                            </Grid>
+                                            <!-- Show All Button -->
+                                            <Button x:Name="BtnShowKappaQuests" Content="필수 퀘스트 전체 보기"
+                                                    Padding="8,4" Click="BtnShowKappaQuests_Click"/>
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+
+                                <!-- Requirements Section -->
+                                <StackPanel x:Name="RequirementsSectionWrapper" Visibility="Collapsed">
+                                    <TextBlock Text="요구 사항" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextPrimaryBrush}"
+                                               Margin="0,0,0,8"/>
+                                    <Border Background="{StaticResource BackgroundDarkBrush}"
+                                            CornerRadius="4" Padding="12" Margin="0,0,0,16">
+                                        <StackPanel x:Name="RequirementsPanel">
+                                            <TextBlock x:Name="TxtRequiredLevel" FontSize="{DynamicResource FontSizeXSmall}"
+                                                       Foreground="{StaticResource TextPrimaryBrush}"
+                                                       Margin="0,0,0,4"/>
+                                            <TextBlock x:Name="TxtRequiredScavKarma" FontSize="{DynamicResource FontSizeXSmall}"
+                                                       Foreground="{StaticResource TextPrimaryBrush}"
+                                                       Margin="0,0,0,4"/>
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+
+                                <!-- Objectives Section -->
+                                <StackPanel x:Name="ObjectivesSection" Visibility="Collapsed">
+                                    <TextBlock Text="목표" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextPrimaryBrush}"
+                                               Margin="0,0,0,8"/>
+                                    <Border Background="{StaticResource BackgroundDarkBrush}"
+                                            CornerRadius="4" Margin="0,0,0,16">
+                                        <ScrollViewer x:Name="ObjectivesScrollViewer" MaxHeight="200"
+                                                      VerticalScrollBarVisibility="Auto"
+                                                      HorizontalScrollBarVisibility="Disabled"
+                                                      PreviewMouseWheel="NestedScrollViewer_PreviewMouseWheel">
+                                            <StackPanel x:Name="ObjectivesList" Margin="12"/>
+                                        </ScrollViewer>
+                                    </Border>
+                                </StackPanel>
+
+                                <!-- Guide Section -->
+                                <StackPanel x:Name="GuideSection" Visibility="Collapsed">
+                                    <TextBlock Text="가이드" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextPrimaryBrush}"
+                                               Margin="0,0,0,8"/>
+                                    <Border Background="{StaticResource BackgroundDarkBrush}"
+                                            CornerRadius="4" Padding="12" Margin="0,0,0,16">
+                                        <StackPanel>
+                                            <!-- Guide Text - Scrollable TextBox -->
+                                            <Border x:Name="GuideTextSection" Visibility="Collapsed"
+                                                    Background="{StaticResource BackgroundMediumBrush}"
+                                                    CornerRadius="4" Margin="0,0,0,8">
+                                                <ScrollViewer x:Name="GuideTextScrollViewer" MaxHeight="250"
+                                                              VerticalScrollBarVisibility="Auto"
+                                                              HorizontalScrollBarVisibility="Disabled"
+                                                              PreviewMouseWheel="NestedScrollViewer_PreviewMouseWheel">
+                                                    <TextBlock x:Name="TxtGuideText" FontSize="{DynamicResource FontSizeXSmall}"
+                                                               Foreground="{StaticResource TextPrimaryBrush}"
+                                                               TextWrapping="Wrap" Padding="10"/>
+                                                </ScrollViewer>
+                                            </Border>
+
+                                            <!-- Guide Images with Expander -->
+                                            <Expander x:Name="GuideImagesExpander" IsExpanded="False"
+                                                      Visibility="Collapsed"
+                                                      Expanded="GuideImagesExpander_Expanded">
+                                                <Expander.Header>
+                                                    <TextBlock x:Name="TxtGuideImagesHeader" Text="이미지 보기" FontSize="{DynamicResource FontSizeTiny}"
+                                                               Foreground="{StaticResource TextSecondaryBrush}"/>
+                                                </Expander.Header>
+                                                <ItemsControl x:Name="GuideImagesList" Margin="0,8,0,0">
+                                                    <ItemsControl.ItemsPanel>
+                                                        <ItemsPanelTemplate>
+                                                            <WrapPanel Orientation="Horizontal"/>
+                                                        </ItemsPanelTemplate>
+                                                    </ItemsControl.ItemsPanel>
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Border Margin="0,0,8,8" BorderThickness="1"
+                                                                    BorderBrush="{StaticResource BorderBrush}"
+                                                                    CornerRadius="4" Background="{StaticResource BackgroundMediumBrush}"
+                                                                    Cursor="Hand" MouseLeftButtonDown="GuideImage_Click">
+                                                                <StackPanel>
+                                                                    <Grid Width="140" Height="80">
+                                                                        <!-- Loading Placeholder -->
+                                                                        <Border Background="{StaticResource BackgroundDarkBrush}"
+                                                                                Visibility="{Binding LoadingVisibility}">
+                                                                            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                                                                                <ProgressBar IsIndeterminate="True"
+                                                                                             Width="60" Height="4"
+                                                                                             Margin="0,0,0,6"/>
+                                                                                <TextBlock Text="로딩 중..."
+                                                                                           FontSize="{DynamicResource FontSizeTiny}"
+                                                                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                                                                           HorizontalAlignment="Center"/>
+                                                                            </StackPanel>
+                                                                        </Border>
+                                                                        <!-- Actual Image -->
+                                                                        <Image Source="{Binding ImageSource}"
+                                                                               Stretch="UniformToFill"
+                                                                               RenderOptions.BitmapScalingMode="HighQuality"
+                                                                               Visibility="{Binding ImageVisibility}"/>
+                                                                    </Grid>
+                                                                    <TextBlock Text="{Binding Caption}" FontSize="{DynamicResource FontSizeTiny}"
+                                                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                                                               TextTrimming="CharacterEllipsis"
+                                                                               TextAlignment="Center"
+                                                                               MaxWidth="140" Margin="4,2"
+                                                                               Visibility="{Binding CaptionVisibility}"/>
+                                                                </StackPanel>
+                                                            </Border>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </Expander>
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+
+                                <!-- Prerequisites Section -->
+                                <StackPanel x:Name="PrerequisitesSectionWrapper" Visibility="Collapsed">
+                                    <TextBlock Text="선행 퀘스트" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextPrimaryBrush}"
+                                               Margin="0,0,0,8"/>
+                                    <Border Background="{StaticResource BackgroundDarkBrush}"
+                                            CornerRadius="4" Padding="12" Margin="0,0,0,16">
+                                        <ItemsControl x:Name="PrerequisitesList">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <!-- Prerequisite Group (AND item or OR group) -->
+                                                    <Border Margin="0,2" Padding="4"
+                                                            Background="{Binding OrGroupBackground}"
+                                                            CornerRadius="4">
+                                                        <StackPanel>
+                                                            <!-- OR Group Label -->
+                                                            <Border Visibility="{Binding OrLabelVisibility}"
+                                                                    Background="#2196F3" Padding="6,2" CornerRadius="3"
+                                                                    HorizontalAlignment="Left" Margin="0,0,0,4">
+                                                                <TextBlock Text="선택 그룹 (OR)" FontSize="{DynamicResource FontSizeTiny}"
+                                                                           Foreground="White" FontWeight="SemiBold"/>
+                                                            </Border>
+                                                            <!-- Items in group -->
+                                                            <ItemsControl ItemsSource="{Binding Items}">
+                                                                <ItemsControl.ItemTemplate>
+                                                                    <DataTemplate>
+                                                                        <StackPanel Orientation="Horizontal" Margin="0,2">
+                                                                            <!-- OR separator for 2nd+ items -->
+                                                                            <TextBlock Text="또는 " Foreground="#2196F3" FontWeight="Bold"
+                                                                                       FontSize="{DynamicResource FontSizeXSmall}"
+                                                                                       Visibility="{Binding OrSeparatorVisibility}"
+                                                                                       Margin="0,0,4,0"/>
+                                                                            <TextBlock Text="{Binding BulletText}" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                                                            <TextBlock Text="{Binding DisplayName}"
+                                                                                       FontSize="{DynamicResource FontSizeXSmall}"
+                                                                                       Cursor="Hand"
+                                                                                       MouseLeftButtonDown="PrerequisiteQuest_Click">
+                                                                                <TextBlock.Style>
+                                                                                    <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                                                                        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+                                                                                        <Style.Triggers>
+                                                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                                                <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
+                                                                                                <Setter Property="TextDecorations" Value="Underline"/>
+                                                                                            </Trigger>
+                                                                                        </Style.Triggers>
+                                                                                    </Style>
+                                                                                </TextBlock.Style>
+                                                                            </TextBlock>
+                                                                            <Border Padding="4,1" CornerRadius="2" Margin="8,0,0,0"
+                                                                                    Background="{Binding StatusBackground}">
+                                                                                <TextBlock Text="{Binding StatusText}"
+                                                                                           FontSize="{DynamicResource FontSizeTiny}"
+                                                                                           Foreground="White"/>
+                                                                            </Border>
+                                                                        </StackPanel>
+                                                                    </DataTemplate>
+                                                                </ItemsControl.ItemTemplate>
+                                                            </ItemsControl>
+                                                        </StackPanel>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </Border>
+                                </StackPanel>
+
+                                <!-- Alternative Quests Section (Mutually Exclusive) -->
+                                <StackPanel x:Name="AlternativeQuestsSectionWrapper" Visibility="Collapsed">
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                        <TextBlock Text="다른 선택지" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
+                                                   Foreground="{StaticResource TextPrimaryBrush}"/>
+                                        <Border Padding="6,2" CornerRadius="3" Margin="8,0,0,0"
+                                                Background="#FF5722">
+                                            <TextBlock Text="상호 배타적" FontSize="{DynamicResource FontSizeTiny}"
+                                                       Foreground="White" FontWeight="SemiBold"/>
+                                        </Border>
+                                    </StackPanel>
+                                    <Border Background="{StaticResource BackgroundDarkBrush}"
+                                            CornerRadius="4" Padding="12" Margin="0,0,0,16">
+                                        <StackPanel>
+                                            <TextBlock Text="이 퀘스트를 완료하면 다음 퀘스트들이 실패 처리됩니다:"
+                                                       FontSize="{DynamicResource FontSizeTiny}"
+                                                       Foreground="#FF5722" FontStyle="Italic"
+                                                       Margin="0,0,0,8"/>
+                                            <ItemsControl x:Name="AlternativeQuestsList">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <StackPanel Orientation="Horizontal" Margin="0,2">
+                                                            <TextBlock Text="- " Foreground="{StaticResource TextSecondaryBrush}"/>
+                                                            <TextBlock Text="{Binding DisplayName}"
+                                                                       Foreground="{StaticResource TextPrimaryBrush}" FontSize="{DynamicResource FontSizeXSmall}"/>
+                                                            <TextBlock Text=" (" FontSize="{DynamicResource FontSizeTiny}"
+                                                                       Foreground="{StaticResource TextSecondaryBrush}" Margin="4,0,0,0"/>
+                                                            <TextBlock Text="{Binding TraderName}" FontSize="{DynamicResource FontSizeTiny}"
+                                                                       Foreground="{StaticResource TextSecondaryBrush}"/>
+                                                            <TextBlock Text=")" FontSize="{DynamicResource FontSizeTiny}"
+                                                                       Foreground="{StaticResource TextSecondaryBrush}"/>
+                                                            <Border Padding="4,1" CornerRadius="2" Margin="8,0,0,0"
+                                                                    Background="{Binding StatusBackground}">
+                                                                <TextBlock Text="{Binding StatusText}" FontSize="{DynamicResource FontSizeTiny}"
+                                                                           Foreground="White"/>
+                                                            </Border>
+                                                        </StackPanel>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

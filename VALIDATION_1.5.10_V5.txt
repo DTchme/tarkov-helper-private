@@ -1,0 +1,75 @@
+TarkovHelper 1.5.10 BUILD_READY v5 - Static Validation
+Generated: 2026-08-07
+
+Total checks: 65
+Passed: 65
+Failed: 0
+
+[PASS] XML TarkovDBEditor/App.xaml
+[PASS] XML TarkovDBEditor/MainWindow.xaml
+[PASS] XML TarkovHelper/App.xaml
+[PASS] XML TarkovHelper/MainWindow.xaml
+[PASS] XML TarkovHelper/Windows/InProgressQuestInputDialog.xaml
+[PASS] XML TarkovHelper/Windows/SyncResultDialog.xaml
+[PASS] XML TarkovHelper/Windows/OverlayMiniMapWindow.xaml
+[PASS] XML TarkovHelper/Windows/WipeWarningDialog.xaml
+[PASS] XML TarkovHelper/Windows/MigrationResultDialog.xaml
+[PASS] XML TarkovHelper/Pages/ItemsPage.xaml
+[PASS] XML TarkovHelper/Pages/QuestListPage.xaml
+[PASS] XML TarkovHelper/Pages/CollectorPage.xaml
+[PASS] XML TarkovHelper/Pages/HideoutPage.xaml
+[PASS] XML TarkovHelper/Debug/ToolboxWindow.xaml
+[PASS] XML TarkovHelper/Pages/Components/QuestRecommendationsPanel.xaml
+[PASS] XML TarkovHelper/Pages/Map/MapPage.xaml
+[PASS] XML TarkovHelper/Windows/Dialogs/CustomMarkerEditorWindow.xaml
+[PASS] XML TarkovHelper/Windows/Dialogs/OverlaySettingsWindow.xaml
+[PASS] XML TarkovDBEditor/Views/SelectMapDialog.xaml
+[PASS] XML TarkovDBEditor/Views/MapEditorWindow.xaml
+[PASS] XML TarkovDBEditor/Views/DataPublishWindow.xaml
+[PASS] XML TarkovDBEditor/Views/MapTransferWindow.xaml
+[PASS] XML TarkovDBEditor/Views/CreateTableDialog.xaml
+[PASS] XML TarkovDBEditor/Views/AddColumnDialog.xaml
+[PASS] XML TarkovDBEditor/Views/QuestRequirementsView.xaml
+[PASS] XML TarkovDBEditor/Views/TestMapWindow.xaml
+[PASS] XML TarkovDBEditor/Views/ScreenshotWatcherSettingsDialog.xaml
+[PASS] XML TarkovDBEditor/Views/MapPreviewWindow.xaml
+[PASS] XML TarkovDBEditor/Views/QuestObjectiveEditorWindow.xaml
+[PASS] XML TarkovDBEditor/Views/AddApiPointsDialog.xaml
+[PASS] XML TarkovDBEditor/Views/EditRowDialog.xaml
+[PASS] XML TarkovDBEditor/Views/FloorSetupWindow.xaml
+[PASS] XML TarkovDBEditor/Views/FloorRangeEditorWindow.xaml
+[PASS] XML TarkovDBEditor/Views/SelectObjectiveDialog.xaml
+[PASS] XML TarkovDBEditor/TarkovDBEditor.csproj
+[PASS] XML CheckDb/CheckDb.csproj
+[PASS] XML MatrixSolver/MatrixSolver.csproj
+[PASS] XML TarkovHelper/TarkovHelper.csproj
+[PASS] JSON .vscode/launch.json
+[PASS] JSON .vscode/tasks.json
+[PASS] JSON TarkovHelper/Assets/DB/Data/map_configs.json
+[PASS] JSON TarkovDBEditor/Resources/Data/map_configs.json
+[PASS] SQLite TarkovDBEditor/tarkov_data.db -- integrity=ok; foreign_keys=0
+[PASS] SQLite TarkovHelper/tarkov_data.db -- integrity=ok; foreign_keys=0
+[PASS] SQLite TarkovHelper/Assets/tarkov_data.db -- integrity=ok; foreign_keys=0
+[PASS] SQLite TarkovDBEditor/Additional/tarkov_data.db -- integrity=ok; foreign_keys=0
+[PASS] ProfileType SeasonalPvp = 2
+[PASS] PVP/PVE/PVP S controls
+[PASS] Seasonal selection handler
+[PASS] Seasonal log isolation
+[PASS] Seasonal quest scope helper
+[PASS] Profile-specific quest pool filter
+[PASS] Character setting scoped: KeyPlayerLevel
+[PASS] Character setting scoped: KeyScavRep
+[PASS] Character setting scoped: KeyDspDecodeCount
+[PASS] Character setting scoped: KeyPlayerFaction
+[PASS] Character setting scoped: KeyPrestigeLevel
+[PASS] Legacy global character setting fallback
+[PASS] Kappa filter hidden
+[PASS] Kappa recommendation weighting removed
+[PASS] Season wiki polling
+[PASS] Collector tab simplified
+[PASS] BUILD_NOW.cmd no UTF-8 BOM
+[PASS] v5 release output
+[PASS] User DB profile key is integer and unrestricted
+
+NOTE: This Linux environment does not have the Windows .NET 8 WPF SDK/dotnet toolchain, so dotnet publish was not executed here.
+NOTE: As of 2026-08-07, the Japanese EFT Wiki seasonal-account page is still being populated; v5 separates Seasonal PvP correctly and will ingest KORD BREACH links when the Wiki publishes them, but it does not invent missing quest details.

@@ -1,0 +1,783 @@
+using System.Diagnostics;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
+using TarkovHelper.Models;
+using TarkovHelper.Services;
+
+namespace TarkovHelper.Pages
+{
+    public partial class CollectorPage : UserControl
+    {
+        private readonly LocalizationService _loc = LocalizationService.Instance;
+        private readonly QuestProgressService _questProgressService = QuestProgressService.Instance;
+        private readonly QuestGraphService _questGraphService = QuestGraphService.Instance;
+        private readonly ItemInventoryService _inventoryService = ItemInventoryService.Instance;
+        private readonly ImageCacheService _imageCache = ImageCacheService.Instance;
+        private readonly ItemsDataService _itemsDataService = ItemsDataService.Instance;
+        private List<CollectorItemViewModel> _allItemViewModels = new();
+        private Dictionary<string, TarkovItem>? _itemLookup;
+        private bool _isInitializing = true;
+        private bool _isDataLoaded = false;
+        private bool _isUnloaded = false;
+        private bool _needsRefreshOnLoad = false; // Flag to indicate data refresh needed after unload
+        private string? _pendingItemSelection = null;
+
+
+        public CollectorPage()
+        {
+            InitializeComponent();
+            _loc.LanguageChanged += OnLanguageChanged;
+            _questProgressService.ProgressChanged += OnProgressChanged;
+            _inventoryService.InventoryChanged += OnInventoryChanged;
+            QuestDbService.Instance.DataRefreshed += OnDatabaseRefreshed;
+            ItemDbService.Instance.DataRefreshed += OnDatabaseRefreshed;
+
+            Loaded += CollectorPage_Loaded;
+            Unloaded += CollectorPage_Unloaded;
+        }
+
+        private void CollectorPage_Unloaded(object sender, RoutedEventArgs e)
+        {
+            _isUnloaded = true;
+            _needsRefreshOnLoad = true; // Mark for refresh on next load to catch changes
+            _loc.LanguageChanged -= OnLanguageChanged;
+            _questProgressService.ProgressChanged -= OnProgressChanged;
+            _inventoryService.InventoryChanged -= OnInventoryChanged;
+            QuestDbService.Instance.DataRefreshed -= OnDatabaseRefreshed;
+            ItemDbService.Instance.DataRefreshed -= OnDatabaseRefreshed;
+        }
+
+        private void OnInventoryChanged(object? sender, EventArgs e)
+        {
+            Dispatcher.Invoke(() =>
+            {
+                foreach (var vm in _allItemViewModels)
+                {
+                    var inventory = _inventoryService.GetInventory(vm.ItemNormalizedName);
+                    vm.OwnedFirQuantity = inventory.FirQuantity;
+                    vm.OwnedNonFirQuantity = inventory.NonFirQuantity;
+                }
+                UpdateDetailPanel();
+            });
+        }
+
+        private async void OnDatabaseRefreshed(object? sender, EventArgs e)
+        {
+            // DB 업데이트 후 데이터 다시 로드
+            await Dispatcher.InvokeAsync(async () =>
+            {
+                // Item lookup 새로고침
+                _itemLookup = ItemDbService.Instance.GetItemLookup();
+
+                // Collector items 데이터 다시 로드
+                await LoadItemsAsync();
+                ApplyFilters();
+                UpdateDetailPanel();
+
+                // 아이콘 백그라운드 로드
+                _ = LoadImagesInBackgroundAsync();
+            });
+        }
+
+        private async void CollectorPage_Loaded(object sender, RoutedEventArgs e)
+        {
+            if (_isUnloaded)
+            {
+                _isUnloaded = false;
+                _loc.LanguageChanged += OnLanguageChanged;
+                _questProgressService.ProgressChanged += OnProgressChanged;
+                _inventoryService.InventoryChanged += OnInventoryChanged;
+                QuestDbService.Instance.DataRefreshed += OnDatabaseRefreshed;
+                ItemDbService.Instance.DataRefreshed += OnDatabaseRefreshed;
+            }
+
+            // Check if data needs refresh (changes might have occurred while unloaded)
+            if (_isDataLoaded && _needsRefreshOnLoad)
+            {
+                _needsRefreshOnLoad = false;
+                await LoadItemsAsync();
+                ApplyFilters();
+                _ = LoadImagesInBackgroundAsync();
+                return;
+            }
+
+            if (_isDataLoaded)
+            {
+                return;
+            }
+
+            LoadingOverlay.Visibility = Visibility.Visible;
+            MainContent.Visibility = Visibility.Collapsed;
+
+            try
+            {
+                // Load items lookup from DB
+                var itemDbService = ItemDbService.Instance;
+                if (!itemDbService.IsLoaded)
+                {
+                    await itemDbService.LoadItemsAsync();
+                }
+                if (_isUnloaded) return;
+
+                _itemLookup = itemDbService.GetItemLookup();
+
+                await LoadItemsAsync();
+                if (_isUnloaded) return;
+
+                _isInitializing = false;
+                _isDataLoaded = true;
+                ApplyFilters();
+
+                if (!string.IsNullOrEmpty(_pendingItemSelection))
+                {
+                    var pendingName = _pendingItemSelection;
+                    _pendingItemSelection = null;
+                    SelectItemInternal(pendingName);
+                }
+            }
+            finally
+            {
+                LoadingOverlay.Visibility = Visibility.Collapsed;
+                MainContent.Visibility = Visibility.Visible;
+            }
+
+            _ = LoadImagesInBackgroundAsync().ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Background image loading failed: {t.Exception?.Message}");
+                }
+            }, TaskScheduler.Default);
+        }
+
+        private void OnLanguageChanged(object? sender, AppLanguage e)
+        {
+            Dispatcher.Invoke(async () =>
+            {
+                await LoadItemsAsync();
+                ApplyFilters();
+                UpdateDetailPanel();
+                _ = LoadImagesInBackgroundAsync();
+            });
+        }
+
+        private void OnProgressChanged(object? sender, EventArgs e)
+        {
+            Dispatcher.Invoke(async () =>
+            {
+                await LoadItemsAsync();
+                ApplyFilters();
+                _ = LoadImagesInBackgroundAsync();
+            });
+        }
+
+        private async Task LoadItemsAsync()
+        {
+            var includePreQuest = ChkIncludePreQuest.IsChecked == true;
+            _allItemViewModels = await _itemsDataService.GetCollectorAggregatedItemsAsync(includePreQuest, _itemLookup);
+
+            // Load inventory data
+            foreach (var vm in _allItemViewModels)
+            {
+                var inventory = _inventoryService.GetInventory(vm.ItemNormalizedName);
+                vm.OwnedFirQuantity = inventory.FirQuantity;
+                vm.OwnedNonFirQuantity = inventory.NonFirQuantity;
+            }
+        }
+
+        private async Task LoadImagesInBackgroundAsync()
+        {
+            if (_allItemViewModels == null || _allItemViewModels.Count == 0)
+                return;
+
+            await LoadVisibleItemImagesAsync();
+            await LoadRemainingItemImagesAsync();
+        }
+
+        private Task LoadVisibleItemImagesAsync()
+        {
+            var visibleItems = GetVisibleItems();
+            if (visibleItems.Count == 0)
+                return Task.CompletedTask;
+
+            var itemsNeedingIcons = visibleItems
+                .Where(vm => !string.IsNullOrEmpty(vm.ItemId) && vm.IconSource == null)
+                .ToList();
+
+            if (itemsNeedingIcons.Count == 0)
+                return Task.CompletedTask;
+
+            LoadItemImages(itemsNeedingIcons);
+            return Task.CompletedTask;
+        }
+
+        private Task LoadRemainingItemImagesAsync()
+        {
+            if (_allItemViewModels == null)
+                return Task.CompletedTask;
+
+            var itemsNeedingIcons = _allItemViewModels
+                .Where(vm => !string.IsNullOrEmpty(vm.ItemId) && vm.IconSource == null)
+                .ToList();
+
+            if (itemsNeedingIcons.Count == 0)
+                return Task.CompletedTask;
+
+            LoadItemImages(itemsNeedingIcons);
+            return Task.CompletedTask;
+        }
+
+        /// <summary>
+        /// Load images for a specific list of items from local files.
+        /// </summary>
+        private void LoadItemImages(List<CollectorItemViewModel> items)
+        {
+            if (items.Count == 0)
+                return;
+
+            foreach (var vm in items)
+            {
+                if (_isUnloaded) return;
+                if (vm.IconSource != null) continue;
+
+                var icon = _imageCache.GetLocalItemIcon(vm.ItemId);
+                if (icon != null)
+                {
+                    vm.IconSource = icon;
+                }
+            }
+        }
+
+        private List<CollectorItemViewModel> GetVisibleItems()
+        {
+            var visibleItems = new List<CollectorItemViewModel>();
+
+            if (LstItems.ItemsSource == null)
+                return visibleItems;
+
+            var scrollViewer = GetScrollViewer(LstItems);
+            if (scrollViewer == null)
+                return visibleItems;
+
+            var itemsSource = LstItems.ItemsSource as IList<CollectorItemViewModel>;
+            if (itemsSource == null || itemsSource.Count == 0)
+                return visibleItems;
+
+            const double estimatedItemHeight = 50;
+            var viewportHeight = scrollViewer.ViewportHeight;
+            var verticalOffset = scrollViewer.VerticalOffset;
+
+            var startIndex = Math.Max(0, (int)(verticalOffset / estimatedItemHeight) - 2);
+            var visibleCount = (int)(viewportHeight / estimatedItemHeight) + 5;
+            var endIndex = Math.Min(itemsSource.Count - 1, startIndex + visibleCount);
+
+            for (int i = startIndex; i <= endIndex; i++)
+            {
+                visibleItems.Add(itemsSource[i]);
+            }
+
+            return visibleItems;
+        }
+
+        private static ScrollViewer? GetScrollViewer(DependencyObject element)
+        {
+            if (element is ScrollViewer sv)
+                return sv;
+
+            for (int i = 0; i < VisualTreeHelper.GetChildrenCount(element); i++)
+            {
+                var child = VisualTreeHelper.GetChild(element, i);
+                var result = GetScrollViewer(child);
+                if (result != null)
+                    return result;
+            }
+            return null;
+        }
+
+        private System.Windows.Threading.DispatcherTimer? _scrollDebounceTimer;
+
+        private void LstItems_ScrollChanged(object sender, ScrollChangedEventArgs e)
+        {
+            if (e.VerticalChange == 0 && e.ViewportHeightChange == 0)
+                return;
+
+            _scrollDebounceTimer?.Stop();
+            _scrollDebounceTimer = new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(100)
+            };
+            _scrollDebounceTimer.Tick += (s, args) =>
+            {
+                _scrollDebounceTimer?.Stop();
+                LoadVisibleItemImagesAsync();
+            };
+            _scrollDebounceTimer.Start();
+        }
+
+        private void ApplyFilters()
+        {
+            var searchText = TxtSearch.Text?.Trim().ToLowerInvariant() ?? string.Empty;
+            var fulfillmentFilter = (CmbFulfillment.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "All";
+            var firOnly = ChkFirOnly.IsChecked == true;
+            var hideFulfilled = ChkHideFulfilled.IsChecked == true;
+            var sortBy = (CmbSort.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "Name";
+
+            var filteredList = ItemsFilterService.FilterAndSortCollector(
+                _allItemViewModels,
+                searchText,
+                fulfillmentFilter,
+                firOnly,
+                hideFulfilled,
+                sortBy).ToList();
+
+            LstItems.ItemsSource = filteredList;
+
+            var totalItems = filteredList.Count;
+            var totalCount = filteredList.Sum(i => i.TotalCount);
+            var fulfilledCount = filteredList.Count(i => i.IsFulfilled);
+            var inProgressCount = filteredList.Count(i => i.FulfillmentStatus == ItemFulfillmentStatus.PartiallyFulfilled);
+            var includePreQuest = ChkIncludePreQuest.IsChecked == true;
+
+            TxtStats.Text = $"아이템 {totalItems}개 표시 중 | " +
+                           $"합계: {totalCount} | " +
+                           $"수집 완료: {fulfilledCount} | " +
+                           $"진행 중: {inProgressCount}" +
+                           (includePreQuest ? " | 선행 퀘스트 포함" : " | 카파 퀘스트 전용");
+        }
+
+        private async void ChkIncludePreQuest_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_isInitializing) return;
+
+            // Reload items when Include Pre-Quest changes
+            await LoadItemsAsync();
+            ApplyFilters();
+            _ = LoadImagesInBackgroundAsync();
+        }
+
+        private void CmbFulfillment_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (!_isInitializing) ApplyFilters();
+        }
+
+        private void TxtSearch_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (!_isInitializing) ApplyFilters();
+        }
+
+        private void Filter_Changed(object sender, RoutedEventArgs e)
+        {
+            if (!_isInitializing) ApplyFilters();
+        }
+
+        private void CmbSort_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (!_isInitializing) ApplyFilters();
+        }
+
+        /// <summary>
+        /// 데이터를 강제로 다시 로드 (프로필 전환 시 사용)
+        /// </summary>
+        public async Task ReloadDataAsync()
+        {
+            await LoadItemsAsync();
+            ApplyFilters();
+            UpdateDetailPanel();
+            _ = LoadImagesInBackgroundAsync();
+        }
+
+        public void SelectItem(string itemNormalizedName)
+        {
+            if (!_isDataLoaded)
+            {
+                _pendingItemSelection = itemNormalizedName;
+                return;
+            }
+
+            SelectItemInternal(itemNormalizedName);
+        }
+
+        private void SelectItemInternal(string itemNormalizedName)
+        {
+            _isInitializing = true;
+
+            try
+            {
+                ResetFiltersForNavigationInternal();
+                ApplyFilters();
+
+                var filteredItems = LstItems.ItemsSource as IEnumerable<CollectorItemViewModel>;
+                var itemVm = filteredItems?.FirstOrDefault(vm =>
+                    string.Equals(vm.ItemNormalizedName, itemNormalizedName, StringComparison.OrdinalIgnoreCase));
+
+                if (itemVm == null) return;
+
+                LstItems.ScrollIntoView(itemVm);
+                LstItems.UpdateLayout();
+                LstItems.SelectedItem = itemVm;
+                LstItems.UpdateLayout();
+                LstItems.ScrollIntoView(itemVm);
+
+                _selectedItem = itemVm;
+                _selectedItemNormalizedName = itemVm.ItemNormalizedName;
+                ShowItemDetail(itemVm);
+
+                LstItems.Focus();
+            }
+            finally
+            {
+                _isInitializing = false;
+            }
+        }
+
+        private void ResetFiltersForNavigationInternal()
+        {
+            TxtSearch.Text = "";
+            CmbFulfillment.SelectedIndex = 0;
+            ChkFirOnly.IsChecked = false;
+            ChkHideFulfilled.IsChecked = false;
+            CmbSort.SelectedIndex = 0;
+        }
+
+        private void ShowItemDetail(CollectorItemViewModel itemVm)
+        {
+            if (itemVm == null)
+            {
+                TxtSelectItem.Visibility = Visibility.Visible;
+                DetailPanel.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            TxtSelectItem.Visibility = Visibility.Collapsed;
+            DetailPanel.Visibility = Visibility.Visible;
+
+            TxtDetailName.Text = itemVm.DisplayName;
+            TxtDetailSubtitle.Text = itemVm.SubtitleName;
+            TxtDetailSubtitle.Visibility = itemVm.SubtitleVisibility;
+            ImgDetailIcon.Source = itemVm.IconSource;
+
+            TxtDetailQuestCount.Text = itemVm.QuestCountDisplay;
+            TxtDetailTotalCount.Text = itemVm.TotalDisplay;
+
+            BtnWiki.IsEnabled = !string.IsNullOrEmpty(itemVm.WikiLink);
+
+            TxtDetailOwnedFir.Text = itemVm.OwnedFirQuantity.ToString();
+            TxtDetailOwnedNonFir.Text = itemVm.OwnedNonFirQuantity.ToString();
+
+            var status = itemVm.FulfillmentStatus;
+            var statusText = status switch
+            {
+                ItemFulfillmentStatus.Fulfilled => "수집 완료",
+                ItemFulfillmentStatus.PartiallyFulfilled => "진행 중",
+                _ => "시작 안 함"
+            };
+
+            TxtDetailFulfillmentStatus.Text = statusText;
+            TxtDetailFulfillmentStatus.Foreground = status switch
+            {
+                ItemFulfillmentStatus.Fulfilled => (Brush)FindResource("SuccessBrush"),
+                ItemFulfillmentStatus.PartiallyFulfilled => (Brush)FindResource("WarningBrush"),
+                _ => (Brush)FindResource("TextSecondaryBrush")
+            };
+
+            DetailProgressBar.Value = itemVm.ProgressPercent;
+
+            var includePreQuest = ChkIncludePreQuest.IsChecked == true;
+            var questSources = _itemsDataService.GetCollectorQuestSources(itemVm.ItemNormalizedName, includePreQuest);
+            QuestRequirementsList.ItemsSource = questSources;
+            QuestSection.Visibility = questSources.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        private CollectorItemViewModel? _selectedItem;
+        private string? _selectedItemNormalizedName;
+
+        private void LstItems_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_isInitializing) return;
+
+            _selectedItem = LstItems.SelectedItem as CollectorItemViewModel;
+            _selectedItemNormalizedName = _selectedItem?.ItemNormalizedName;
+            UpdateDetailPanel();
+        }
+
+        private void UpdateDetailPanel()
+        {
+            if (_selectedItem == null && !string.IsNullOrEmpty(_selectedItemNormalizedName))
+            {
+                _selectedItem = _allItemViewModels.FirstOrDefault(vm =>
+                    string.Equals(vm.ItemNormalizedName, _selectedItemNormalizedName, StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (_selectedItem == null)
+            {
+                TxtSelectItem.Visibility = Visibility.Visible;
+                DetailPanel.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            TxtSelectItem.Visibility = Visibility.Collapsed;
+            DetailPanel.Visibility = Visibility.Visible;
+
+            TxtDetailName.Text = _selectedItem.DisplayName;
+            TxtDetailSubtitle.Text = _selectedItem.SubtitleName;
+            TxtDetailSubtitle.Visibility = _selectedItem.SubtitleVisibility;
+            ImgDetailIcon.Source = _selectedItem.IconSource;
+
+            TxtDetailQuestCount.Text = _selectedItem.QuestCountDisplay;
+            TxtDetailTotalCount.Text = _selectedItem.TotalDisplay;
+
+            BtnWiki.IsEnabled = !string.IsNullOrEmpty(_selectedItem.WikiLink);
+
+            UpdateDetailInventoryDisplay();
+
+            var includePreQuest = ChkIncludePreQuest.IsChecked == true;
+            var questSources = _itemsDataService.GetCollectorQuestSources(_selectedItem.ItemNormalizedName, includePreQuest);
+            QuestRequirementsList.ItemsSource = questSources;
+            QuestSection.Visibility = questSources.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+
+        private void QuestName_Click(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is FrameworkElement element && element.DataContext is CollectorQuestItemSourceViewModel vm)
+            {
+                if (string.IsNullOrEmpty(vm.QuestNormalizedName)) return;
+
+                var mainWindow = Window.GetWindow(this) as MainWindow;
+                mainWindow?.NavigateToQuest(vm.QuestNormalizedName);
+            }
+        }
+
+        private void BtnWiki_Click(object sender, RoutedEventArgs e)
+        {
+            if (_selectedItem == null || string.IsNullOrEmpty(_selectedItem.WikiLink))
+                return;
+
+            try
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = _selectedItem.WikiLink,
+                    UseShellExecute = true
+                });
+            }
+            catch
+            {
+            }
+        }
+
+        private void BtnQuestWiki_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is CollectorQuestItemSourceViewModel vm && vm.Task != null)
+            {
+                var wikiPageName = NormalizedNameGenerator.GetWikiPageName(vm.Task.Name);
+                var wikiUrl = $"https://escapefromtarkov.fandom.com/wiki/{Uri.EscapeDataString(wikiPageName.Replace(" ", "_"))}";
+
+                try
+                {
+                    Process.Start(new ProcessStartInfo
+                    {
+                        FileName = wikiUrl,
+                        UseShellExecute = true
+                    });
+                }
+                catch
+                {
+                }
+            }
+        }
+
+        #region Inventory Quantity Controls
+
+        private void BtnFirMinus1_Click(object sender, RoutedEventArgs e)
+        {
+            AdjustFirQuantity(sender, -1);
+        }
+
+        private void BtnFirPlus1_Click(object sender, RoutedEventArgs e)
+        {
+            AdjustFirQuantity(sender, 1);
+        }
+
+        private void BtnNonFirMinus1_Click(object sender, RoutedEventArgs e)
+        {
+            AdjustNonFirQuantity(sender, -1);
+        }
+
+        private void BtnNonFirPlus1_Click(object sender, RoutedEventArgs e)
+        {
+            AdjustNonFirQuantity(sender, 1);
+        }
+
+        private void AdjustFirQuantity(object sender, int delta)
+        {
+            if (sender is Button btn && btn.DataContext is CollectorItemViewModel vm)
+            {
+                _inventoryService.AdjustFirQuantity(vm.ItemNormalizedName, delta);
+                vm.OwnedFirQuantity = _inventoryService.GetFirQuantity(vm.ItemNormalizedName);
+            }
+        }
+
+        private void AdjustNonFirQuantity(object sender, int delta)
+        {
+            if (sender is Button btn && btn.DataContext is CollectorItemViewModel vm)
+            {
+                _inventoryService.AdjustNonFirQuantity(vm.ItemNormalizedName, delta);
+                vm.OwnedNonFirQuantity = _inventoryService.GetNonFirQuantity(vm.ItemNormalizedName);
+            }
+        }
+
+        private void BtnDetailFirMinus5_Click(object sender, RoutedEventArgs e)
+        {
+            AdjustDetailFirQuantity(-5);
+        }
+
+        private void BtnDetailFirMinus1_Click(object sender, RoutedEventArgs e)
+        {
+            AdjustDetailFirQuantity(-1);
+        }
+
+        private void BtnDetailFirPlus1_Click(object sender, RoutedEventArgs e)
+        {
+            AdjustDetailFirQuantity(1);
+        }
+
+        private void BtnDetailFirPlus5_Click(object sender, RoutedEventArgs e)
+        {
+            AdjustDetailFirQuantity(5);
+        }
+
+        private void BtnDetailNonFirMinus5_Click(object sender, RoutedEventArgs e)
+        {
+            AdjustDetailNonFirQuantity(-5);
+        }
+
+        private void BtnDetailNonFirMinus1_Click(object sender, RoutedEventArgs e)
+        {
+            AdjustDetailNonFirQuantity(-1);
+        }
+
+        private void BtnDetailNonFirPlus1_Click(object sender, RoutedEventArgs e)
+        {
+            AdjustDetailNonFirQuantity(1);
+        }
+
+        private void BtnDetailNonFirPlus5_Click(object sender, RoutedEventArgs e)
+        {
+            AdjustDetailNonFirQuantity(5);
+        }
+
+        private void AdjustDetailFirQuantity(int delta)
+        {
+            if (_selectedItem == null) return;
+            _inventoryService.AdjustFirQuantity(_selectedItem.ItemNormalizedName, delta);
+            _selectedItem.OwnedFirQuantity = _inventoryService.GetFirQuantity(_selectedItem.ItemNormalizedName);
+            UpdateDetailInventoryDisplay();
+        }
+
+        private void AdjustDetailNonFirQuantity(int delta)
+        {
+            if (_selectedItem == null) return;
+            _inventoryService.AdjustNonFirQuantity(_selectedItem.ItemNormalizedName, delta);
+            _selectedItem.OwnedNonFirQuantity = _inventoryService.GetNonFirQuantity(_selectedItem.ItemNormalizedName);
+            UpdateDetailInventoryDisplay();
+        }
+
+        private void UpdateDetailInventoryDisplay()
+        {
+            if (_selectedItem == null) return;
+
+            TxtDetailOwnedFir.Text = _selectedItem.OwnedFirQuantity.ToString();
+            TxtDetailOwnedNonFir.Text = _selectedItem.OwnedNonFirQuantity.ToString();
+
+            var status = _selectedItem.FulfillmentStatus;
+            var statusText = status switch
+            {
+                ItemFulfillmentStatus.Fulfilled => "수집 완료",
+                ItemFulfillmentStatus.PartiallyFulfilled => "진행 중",
+                _ => "시작 안 함"
+            };
+
+            TxtDetailFulfillmentStatus.Text = statusText;
+            TxtDetailFulfillmentStatus.Foreground = status switch
+            {
+                ItemFulfillmentStatus.Fulfilled => (Brush)FindResource("SuccessBrush"),
+                ItemFulfillmentStatus.PartiallyFulfilled => (Brush)FindResource("WarningBrush"),
+                _ => (Brush)FindResource("TextSecondaryBrush")
+            };
+
+            DetailProgressBar.Value = _selectedItem.ProgressPercent;
+        }
+
+        private void TxtDetailOwned_PreviewTextInput(object sender, TextCompositionEventArgs e)
+        {
+            e.Handled = !int.TryParse(e.Text, out _);
+        }
+
+        private void TxtDetailOwnedFir_LostFocus(object sender, RoutedEventArgs e)
+        {
+            ApplyFirQuantityFromTextBox();
+        }
+
+        private void TxtDetailOwnedFir_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter)
+            {
+                ApplyFirQuantityFromTextBox();
+                Keyboard.ClearFocus();
+            }
+        }
+
+        private void TxtDetailOwnedNonFir_LostFocus(object sender, RoutedEventArgs e)
+        {
+            ApplyNonFirQuantityFromTextBox();
+        }
+
+        private void TxtDetailOwnedNonFir_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter)
+            {
+                ApplyNonFirQuantityFromTextBox();
+                Keyboard.ClearFocus();
+            }
+        }
+
+        private void ApplyFirQuantityFromTextBox()
+        {
+            if (_selectedItem == null) return;
+
+            if (int.TryParse(TxtDetailOwnedFir.Text, out var quantity))
+            {
+                quantity = Math.Max(0, quantity);
+                _inventoryService.SetFirQuantity(_selectedItem.ItemNormalizedName, quantity);
+                _selectedItem.OwnedFirQuantity = quantity;
+                UpdateDetailInventoryDisplay();
+            }
+            else
+            {
+                TxtDetailOwnedFir.Text = _selectedItem.OwnedFirQuantity.ToString();
+            }
+        }
+
+        private void ApplyNonFirQuantityFromTextBox()
+        {
+            if (_selectedItem == null) return;
+
+            if (int.TryParse(TxtDetailOwnedNonFir.Text, out var quantity))
+            {
+                quantity = Math.Max(0, quantity);
+                _inventoryService.SetNonFirQuantity(_selectedItem.ItemNormalizedName, quantity);
+                _selectedItem.OwnedNonFirQuantity = quantity;
+                UpdateDetailInventoryDisplay();
+            }
+            else
+            {
+                TxtDetailOwnedNonFir.Text = _selectedItem.OwnedNonFirQuantity.ToString();
+            }
+        }
+
+        #endregion
+    }
+}

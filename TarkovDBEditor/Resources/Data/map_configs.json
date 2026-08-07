@@ -1,0 +1,165 @@
+{
+  "maps": [
+    {
+      "key": "Woods",
+      "displayName": "Woods",
+      "svgFileName": "Woods.svg",
+      "imageWidth": 4800,
+      "imageHeight": 4800,
+      "aliases": ["woods", "WOODS"],
+      "playerMarkerTransform": [-2, 0, 0, 2, 2200, 2841.5],
+      "svgBounds": [-900, 470, -770, 620]
+    },
+    {
+      "key": "Customs",
+      "displayName": "Customs",
+      "svgFileName": "Customs.svg",
+      "imageWidth": 4400,
+      "imageHeight": 3200,
+      "aliases": ["customs", "CUSTOMS", "bigmap"],
+      "playerMarkerTransform": [-2.0, 0, 0, 2.0, 2600, 1601.5],
+      "svgBounds": [-280, 240, -360, 690],
+      "floors": [
+        {"layerId": "basement", "displayName": "Basement", "order": -1, "isDefault": false},
+        {"layerId": "main", "displayName": "Ground Floor", "order": 0, "isDefault": true},
+        {"layerId": "level2", "displayName": "Level 2", "order": 1, "isDefault": false},
+        {"layerId": "level3", "displayName": "Level 3", "order": 2, "isDefault": false}
+      ]
+    },
+    {
+      "key": "Shoreline",
+      "displayName": "Shoreline",
+      "svgFileName": "Shoreline.svg",
+      "imageWidth": 3700,
+      "imageHeight": 3100,
+      "aliases": ["shoreline", "SHORELINE"],
+      "playerMarkerTransform": [-1, 0, 0, 1, 1570, 1451.5],
+      "svgBounds": [-400, 600, -1050, 490],
+      "floors": [
+        {"layerId": "basement", "displayName": "Basement", "order": -1, "isDefault": false},
+        {"layerId": "main", "displayName": "Ground Floor", "order": 0, "isDefault": true},
+        {"layerId": "level2", "displayName": "Level 2", "order": 1, "isDefault": false},
+        {"layerId": "level3", "displayName": "Level 3", "order": 2, "isDefault": false}
+      ]
+    },
+    {
+      "key": "Interchange",
+      "displayName": "Interchange",
+      "svgFileName": "Interchange.svg",
+      "imageWidth": 4000,
+      "imageHeight": 3900,
+      "aliases": ["interchange", "INTERCHANGE"],
+      "playerMarkerTransform": [-2.0, 0, 0, 2.0, 2166.0, 2004.0],
+      "svgBounds": [-470, 450, -390, 570],
+      "floors": [
+        {"layerId": "main", "displayName": "Ground Floor", "order": 0, "isDefault": true},
+        {"layerId": "level2", "displayName": "Level 2", "order": 1, "isDefault": false},
+        {"layerId": "level3", "displayName": "Level 3", "order": 2, "isDefault": false}
+      ]
+    },
+    {
+      "key": "Reserve",
+      "displayName": "Reserve",
+      "svgFileName": "Reserve.svg",
+      "imageWidth": 3200,
+      "imageHeight": 3000,
+      "aliases": ["reserve", "RESERVE", "RezervBase"],
+      "playerMarkerTransform": [-1.932, 0.518, 0.517, 1.932, 1600.02, 1520.08],
+      "svgBounds": [-280, 230, -280, 295],
+      "floors": [
+        {"layerId": "bunker", "displayName": "Bunker", "order": -1, "isDefault": false},
+        {"layerId": "main", "displayName": "Ground Floor", "order": 0, "isDefault": true},
+        {"layerId": "level2", "displayName": "Level 2", "order": 1, "isDefault": false},
+        {"layerId": "level3", "displayName": "Level 3", "order": 2, "isDefault": false},
+        {"layerId": "level4", "displayName": "Level 4", "order": 3, "isDefault": false}
+      ]
+    },
+    {
+      "key": "Lighthouse",
+      "displayName": "Lighthouse",
+      "svgFileName": "Lighthouse.svg",
+      "imageWidth": 3100,
+      "imageHeight": 3700,
+      "aliases": ["lighthouse", "LIGHTHOUSE"],
+      "playerMarkerTransform": [-1, 0, 0, 1, 1550, 2051.5],
+      "svgBounds": [-1000, 600, -500, 430]
+    },
+    {
+      "key": "StreetsOfTarkov",
+      "displayName": "Streets of Tarkov",
+      "svgFileName": "StreetsOfTarkov.svg",
+      "imageWidth": 3260,
+      "imageHeight": 3500,
+      "aliases": ["streets", "STREETS", "TarkovStreets", "streets-of-tarkov", "Streets of Tarkov"],
+      "playerMarkerTransform": [-2, 0, 0, 2, 1660, 1421.5],
+      "svgBounds": [-230, 540, -285, 335]
+    },
+    {
+      "key": "Factory",
+      "displayName": "Factory",
+      "svgFileName": "Factory.svg",
+      "imageWidth": 3600,
+      "imageHeight": 3600,
+      "aliases": ["factory", "FACTORY", "factory4_day", "factory4_night", "Night Factory"],
+      "playerMarkerTransform": [0, -10, -10, 0, 1800, 1851.5],
+      "svgBounds": [-80, 85, -80, 95],
+      "floors": [
+        {"layerId": "basement", "displayName": "Basement", "order": -1, "isDefault": false},
+        {"layerId": "main", "displayName": "Ground Floor", "order": 0, "isDefault": true},
+        {"layerId": "level2", "displayName": "Level 2", "order": 1, "isDefault": false},
+        {"layerId": "level3", "displayName": "Level 3", "order": 2, "isDefault": false}
+      ]
+    },
+    {
+      "key": "GroundZero",
+      "displayName": "Ground Zero",
+      "svgFileName": "GroundZero.svg",
+      "imageWidth": 2800,
+      "imageHeight": 3100,
+      "aliases": ["groundzero", "GROUNDZERO", "Sandbox", "sandbox", "ground-zero", "ground-zero-21", "Ground Zero 21+"],
+      "playerMarkerTransform": [-2, 0, 0, 2, 1600, 1301.5],
+      "svgBounds": [-120, 360, -90, 250],
+      "floors": [
+        {"layerId": "basement", "displayName": "Basement", "order": -1, "isDefault": false},
+        {"layerId": "main", "displayName": "Ground Floor", "order": 0, "isDefault": true},
+        {"layerId": "level2", "displayName": "Level 2", "order": 1, "isDefault": false},
+        {"layerId": "level3", "displayName": "Level 3", "order": 2, "isDefault": false}
+      ]
+    },
+    {
+      "key": "Labs",
+      "displayName": "The Lab",
+      "svgFileName": "Labs.svg",
+      "imageWidth": 5500,
+      "imageHeight": 4200,
+      "aliases": ["labs", "LABS", "laboratory", "the-lab", "The Lab", "lab", "Lab"],
+      "playerMarkerTransform": [0, 10, 10, 0, 6100, 4051.5],
+      "svgBounds": [-460, -230, -300, -90],
+      "floors": [
+        {"layerId": "basement", "displayName": "Basement", "order": -1, "isDefault": false},
+        {"layerId": "main", "displayName": "Main Floor", "order": 0, "isDefault": true},
+        {"layerId": "level2", "displayName": "Level 2", "order": 1, "isDefault": false}
+      ]
+    },
+    {
+      "key": "Labyrinth",
+      "displayName": "The Labyrinth",
+      "svgFileName": "Labyrinth.svg",
+      "imageWidth": 3300,
+      "imageHeight": 3200,
+      "aliases": ["labyrinth", "LABYRINTH", "the-labyrinth", "The Labyrinth"],
+      "playerMarkerTransform": [0.0159, 9.8630, 9.8655, 0.0502, 1482.9, 1597.9],
+      "svgBounds": [-162, 162, -150, 184]
+    },
+    {
+      "key": "Terminal",
+      "displayName": "Terminal",
+      "svgFileName": "Terminal.svg",
+      "imageWidth": 2663,
+      "imageHeight": 3132,
+      "aliases": ["terminal", "TERMINAL"],
+      "playerMarkerTransform": [-0.992, 0, 0, 0.994, 1346.0, 1615.5],
+      "svgBounds": [1357.0, -1328.0, -1625.0, 1526.0]
+    }
+  ]
+}

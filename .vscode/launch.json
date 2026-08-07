@@ -1,0 +1,32 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "TarkovHelper",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build",
+            "program": "${workspaceFolder}/TarkovHelper/bin/Debug/net8.0-windows/TarkovHelper.dll",
+            "args": [],
+            "cwd": "${workspaceFolder}/TarkovHelper",
+            "console": "internalConsole",
+            "stopAtEntry": false
+        },
+        {
+            "name": "TarkovDBEditor",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build-dbeditor",
+            "program": "${workspaceFolder}/TarkovDBEditor/bin/Debug/net8.0-windows/TarkovDBEditor.dll",
+            "args": [],
+            "cwd": "${workspaceFolder}/TarkovDBEditor",
+            "console": "internalConsole",
+            "stopAtEntry": false
+        },
+        {
+            "name": ".NET Core Attach",
+            "type": "coreclr",
+            "request": "attach"
+        }
+    ]
+}

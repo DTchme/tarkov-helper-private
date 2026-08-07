@@ -1,0 +1,28 @@
+Tarkov Helper 1.5.10 빌드 준비본 v6
+
+이 묶음에는 Escape from Tarkov 1.1 퀘스트 개편 대응 소스와 Windows 자동 빌드 스크립트가 들어 있습니다.
+
+포함된 핵심 수정
+- QuestApiRefreshService의 System.IO / System.Net.Http 참조 반영
+- 현재 프로필에 맞는 tarkov.dev regular 또는 pve 퀘스트 갱신
+- 퀘스트 진행도 재구축 전 백업·미리보기·복원 보호
+- 커뮤니티 GPS 좌표를 앱 게임 좌표로 변환해 지도 마커 갱신
+- 등대 Drug Trafficking 위치를 북쪽 기차역 컨테이너 구역으로 수정
+- ErrorBrush 런타임 안전 처리
+- BUILD_NOW.cmd UTF-8 BOM 제거로 Windows CMD 첫 줄 실행 안정화
+- Windows PowerShell 다운로드 단계에 TLS 1.2 명시
+- NullToVisibilityConverter의 역변환 예외 방지
+- 퀘스트 DB 갱신 취소 처리 및 백업 파일명 충돌 방지 강화
+- tarkov.dev 일시 장애 재시도(최대 3회) 및 전용 경고 처리
+- 422 중 GraphQL 서버 장애 문구만 일시 장애로 판정해 실제 쿼리 오류와 구분
+
+빌드 방법
+1. ZIP을 Windows PC에 완전히 압축 해제합니다.
+2. BUILD_NOW.cmd를 더블클릭합니다.
+3. .NET 8 SDK가 없으면 공식 설치 스크립트로 현재 폴더의 .dotnet에 설치합니다.
+4. NuGet 패키지를 복원하고 Windows x64 자체 포함 버전을 빌드합니다.
+5. 완료되면 다음 파일이 생성됩니다.
+   release\TarkovHelper_v1.5.10_1.1_windows_v6.zip
+
+빌드 오류가 발생하면 같은 폴더의 build-release.log를 확인하십시오.
+기존 Tarkov Helper 폴더와 Data\user_data.db는 별도로 백업한 뒤 사용하십시오.
