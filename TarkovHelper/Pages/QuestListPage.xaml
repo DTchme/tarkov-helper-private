@@ -176,10 +176,12 @@
                     </ComboBox>
 
                     <!-- Status Filter -->
-                    <ComboBox x:Name="CmbStatus" Width="110"
+                    <ComboBox x:Name="CmbStatus" Width="130"
                               SelectionChanged="CmbStatus_SelectionChanged">
-                        <ComboBoxItem Content="진행 중" Tag="Active" IsSelected="True"/>
+                        <ComboBoxItem Content="진행/미수락" Tag="Current" IsSelected="True"/>
                         <ComboBoxItem Content="전체" Tag="All"/>
+                        <ComboBoxItem Content="진행 중" Tag="Active"/>
+                        <ComboBoxItem Content="미수락" Tag="Available"/>
                         <ComboBoxItem Content="잠김" Tag="Locked"/>
                         <ComboBoxItem Content="완료" Tag="Done"/>
                         <ComboBoxItem Content="실패" Tag="Failed"/>

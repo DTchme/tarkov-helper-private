@@ -11,7 +11,12 @@ namespace TarkovHelper.Models
         Locked,
 
         /// <summary>
-        /// Available to start/in progress
+        /// Prerequisites are met, but the quest has not been observed as started
+        /// </summary>
+        Available,
+
+        /// <summary>
+        /// Explicitly started/in progress
         /// </summary>
         Active,
 

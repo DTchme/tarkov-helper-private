@@ -30,6 +30,7 @@ namespace TarkovHelper.Pages
 
         // Status brushes
         private static readonly Brush LockedBrush = new SolidColorBrush(Color.FromRgb(102, 102, 102));
+        private static readonly Brush AvailableBrush = new SolidColorBrush(Color.FromRgb(0, 150, 136));
         private static readonly Brush ActiveBrush = new SolidColorBrush(Color.FromRgb(76, 175, 80));
         private static readonly Brush DoneBrush = new SolidColorBrush(Color.FromRgb(33, 150, 243));
         private static readonly Brush FailedBrush = new SolidColorBrush(Color.FromRgb(244, 67, 54));
@@ -356,7 +357,7 @@ namespace TarkovHelper.Pages
                 Status = status,
                 StatusText = GetStatusText(status, task),
                 StatusBackground = GetStatusBrush(status),
-                CompleteButtonVisibility = (status == QuestStatus.Active || status == QuestStatus.Locked || status == QuestStatus.LevelLocked)
+                CompleteButtonVisibility = (status == QuestStatus.Available || status == QuestStatus.Active || status == QuestStatus.Locked || status == QuestStatus.LevelLocked)
                     && status != QuestStatus.Unavailable ? Visibility.Visible : Visibility.Collapsed,
                 IsKappaRequired = task.ReqKappa
             };
@@ -430,6 +431,7 @@ namespace TarkovHelper.Pages
             return status switch
             {
                 QuestStatus.Locked => "잠김",
+                QuestStatus.Available => "미수락",
                 QuestStatus.Active => "진행중",
                 QuestStatus.Done => "완료",
                 QuestStatus.Failed => "실패",
@@ -444,6 +446,7 @@ namespace TarkovHelper.Pages
             return status switch
             {
                 QuestStatus.Locked => LockedBrush,
+                QuestStatus.Available => AvailableBrush,
                 QuestStatus.Active => ActiveBrush,
                 QuestStatus.Done => DoneBrush,
                 QuestStatus.Failed => FailedBrush,
@@ -472,7 +475,7 @@ namespace TarkovHelper.Pages
                 vm.Status = status;
                 vm.StatusText = GetStatusText(status, vm.Task);
                 vm.StatusBackground = GetStatusBrush(status);
-                vm.CompleteButtonVisibility = (status == QuestStatus.Active || status == QuestStatus.Locked || status == QuestStatus.LevelLocked)
+                vm.CompleteButtonVisibility = (status == QuestStatus.Available || status == QuestStatus.Active || status == QuestStatus.Locked || status == QuestStatus.LevelLocked)
                     && status != QuestStatus.Unavailable ? Visibility.Visible : Visibility.Collapsed;
             }
         }
@@ -520,7 +523,7 @@ namespace TarkovHelper.Pages
 
             var selectedTrader = (CmbTrader.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? string.Empty;
             var selectedMap = (CmbMap.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? string.Empty;
-            var selectedStatus = (CmbStatus.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "Active";
+            var selectedStatus = (CmbStatus.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "Current";
 
             // Get selected faction
             var selectedFaction = RbBear.IsChecked == true ? "bear" : (RbUsec.IsChecked == true ? "usec" : null);
@@ -556,8 +559,14 @@ namespace TarkovHelper.Pages
                 // Status filter
                 if (selectedStatus != "All")
                 {
+                    // The default view keeps both accepted and not-yet-accepted current quests.
+                    if (selectedStatus == "Current")
+                    {
+                        if (vm.Status != QuestStatus.Active && vm.Status != QuestStatus.Available)
+                            return false;
+                    }
                     // "Locked" filter now includes both Locked and LevelLocked
-                    if (selectedStatus == "Locked")
+                    else if (selectedStatus == "Locked")
                     {
                         if (vm.Status != QuestStatus.Locked && vm.Status != QuestStatus.LevelLocked)
                             return false;
@@ -592,7 +601,7 @@ namespace TarkovHelper.Pages
             var playerLevel = SettingsService.Instance.PlayerLevel;
             var lockedTotal = stats.Locked + stats.LevelLocked;
             TxtStats.Text = $"레벨 {playerLevel} | {stats.Total}개 중 {filtered.Count}개 표시 중 | " +
-                           $"진행 중: {stats.Active} | 잠김: {lockedTotal} | 완료: {stats.Done} | 실패: {stats.Failed} | 불가: {stats.Unavailable}";
+                           $"진행 중: {stats.Active} | 미수락: {stats.Available} | 잠김: {lockedTotal} | 완료: {stats.Done} | 실패: {stats.Failed} | 불가: {stats.Unavailable}";
 
             // Kappa progress UI is intentionally disabled in 1.1+/Season 1.
         }
