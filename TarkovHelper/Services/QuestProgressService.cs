@@ -270,7 +270,7 @@ namespace TarkovHelper.Services
             var taskId = task.Ids?.FirstOrDefault();
             var taskKey = taskId ?? task.NormalizedName;
 
-            if (string.IsNullOrEmpty(taskKey)) return QuestStatus.Active;
+            if (string.IsNullOrEmpty(taskKey)) return QuestStatus.Available;
 
             // Explicit log/manual states take precedence over the reconstructed quest graph.
             // This is important after a quest-line overhaul: a quest that the game says is started
@@ -290,10 +290,11 @@ namespace TarkovHelper.Services
             bool isTopLevel = _getStatusVisited == null;
             _getStatusVisited ??= new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            // If already checking this task (circular reference), treat as Active to break the cycle
+            // If already checking this task (circular reference), do not invent an explicit
+            // started state. Treat it as merely available to break the cycle safely.
             if (!_getStatusVisited.Add(taskKey))
             {
-                return QuestStatus.Active;
+                return QuestStatus.Available;
             }
 
             try
@@ -326,7 +327,9 @@ namespace TarkovHelper.Services
                 if (!IsScavKarmaRequirementMet(task))
                     return QuestStatus.LevelLocked;  // Use LevelLocked status for karma-locked quests too
 
-                return QuestStatus.Active;
+                // Prerequisites alone only tell us that a quest can be accepted. Active is
+                // reserved for a Started event from the game log or manual in-progress input.
+                return QuestStatus.Available;
             }
             finally
             {
@@ -1098,9 +1101,9 @@ namespace TarkovHelper.Services
         /// <summary>
         /// Get count statistics for quest statuses
         /// </summary>
-        public (int Total, int Locked, int Active, int Done, int Failed, int LevelLocked, int Unavailable) GetStatistics()
+        public (int Total, int Locked, int Available, int Active, int Done, int Failed, int LevelLocked, int Unavailable) GetStatistics()
         {
-            int locked = 0, active = 0, done = 0, failed = 0, levelLocked = 0, unavailable = 0;
+            int locked = 0, available = 0, active = 0, done = 0, failed = 0, levelLocked = 0, unavailable = 0;
 
             foreach (var task in _allTasks)
             {
@@ -1108,6 +1111,7 @@ namespace TarkovHelper.Services
                 switch (status)
                 {
                     case QuestStatus.Locked: locked++; break;
+                    case QuestStatus.Available: available++; break;
                     case QuestStatus.Active: active++; break;
                     case QuestStatus.Done: done++; break;
                     case QuestStatus.Failed: failed++; break;
@@ -1116,7 +1120,7 @@ namespace TarkovHelper.Services
                 }
             }
 
-            return (_allTasks.Count, locked, active, done, failed, levelLocked, unavailable);
+            return (_allTasks.Count, locked, available, active, done, failed, levelLocked, unavailable);
         }
 
         #region Persistence
