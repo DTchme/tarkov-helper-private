@@ -1305,6 +1305,9 @@ public partial class MainWindow : Window
         // Update font size display
         UpdateFontSizeDisplay();
 
+        var currentAppVersion = UpdateService.Instance.CurrentVersion;
+        TxtCurrentAppVersion.Text = $"현재 버전 v{FormatAppVersion(currentAppVersion)}";
+
         // Update path display
         if (!string.IsNullOrEmpty(logPath))
         {
@@ -2099,6 +2102,59 @@ public partial class MainWindow : Window
             BtnClearCache.IsEnabled = true;
             BtnClearAllData.IsEnabled = true;
         }
+    }
+
+    /// <summary>
+    /// Check GitHub Releases for a newer application package and hand installation to AutoUpdater.NET.
+    /// User progress remains in Config/user_data.db, outside the files shipped by the release ZIP.
+    /// </summary>
+    private async void BtnCheckAppUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        var updateService = UpdateService.Instance;
+
+        try
+        {
+            BtnCheckAppUpdate.IsEnabled = false;
+            TxtAppUpdateStatus.Text = "GitHub에서 최신 버전을 확인하는 중...";
+            TxtAppUpdateStatus.Foreground = GetStatusBrush("TextSecondaryBrush", Brushes.Gray);
+
+            var update = await updateService.CheckForUpdateAsync();
+            if (update == null)
+            {
+                if (updateService.LastError != null)
+                {
+                    TxtAppUpdateStatus.Text = "업데이트 정보를 확인하지 못했습니다.";
+                    TxtAppUpdateStatus.Foreground = GetStatusBrush("ErrorBrush", Brushes.IndianRed);
+                }
+                else
+                {
+                    TxtAppUpdateStatus.Text = "현재 최신 버전을 사용 중입니다.";
+                    TxtAppUpdateStatus.Foreground = GetStatusBrush("SuccessBrush", Brushes.Green);
+                }
+
+                return;
+            }
+
+            var versionText = FormatAppVersion(update.Version);
+            TxtAppUpdateStatus.Text = $"새 버전 v{versionText}을 사용할 수 있습니다.";
+            TxtAppUpdateStatus.Foreground = GetStatusBrush("SuccessBrush", Brushes.Green);
+            updateService.StartUpdate();
+        }
+        catch (Exception ex)
+        {
+            _log.Error("Manual application update failed", ex);
+            TxtAppUpdateStatus.Text = $"업데이트 실패: {ex.Message}";
+            TxtAppUpdateStatus.Foreground = GetStatusBrush("ErrorBrush", Brushes.IndianRed);
+        }
+        finally
+        {
+            BtnCheckAppUpdate.IsEnabled = true;
+        }
+    }
+
+    private static string FormatAppVersion(Version version)
+    {
+        return version.Build >= 0 ? version.ToString(3) : version.ToString();
     }
 
     /// <summary>

@@ -15,7 +15,8 @@ namespace TarkovHelper.Services
         private static readonly Lazy<UpdateService> _instance = new(() => new UpdateService());
         public static UpdateService Instance => _instance.Value;
 
-        private const string UpdateXmlUrl = "https://raw.githubusercontent.com/Zeliper/Tarkov-Item-Helper/main/update.xml";
+        private const string UpdateXmlUrl =
+            "https://github.com/DTchme/tarkov-helper-private/releases/latest/download/update.xml";
         private const int CheckIntervalMinutes = 3;
 
         private readonly HttpClient _httpClient;
@@ -24,6 +25,7 @@ namespace TarkovHelper.Services
 
         private bool _isChecking;
         private UpdateInfo? _availableUpdate;
+        private Exception? _lastError;
         private DateTime? _lastCheckTime;
 
         /// <summary>
@@ -40,6 +42,11 @@ namespace TarkovHelper.Services
         /// Currently available update (null if no update available)
         /// </summary>
         public UpdateInfo? AvailableUpdate => _availableUpdate;
+
+        /// <summary>
+        /// Error from the most recent update check, if any
+        /// </summary>
+        public Exception? LastError => _lastError;
 
         /// <summary>
         /// Whether an update check is in progress
@@ -106,6 +113,7 @@ namespace TarkovHelper.Services
 
             try
             {
+                _lastError = null;
                 var response = await _httpClient.GetStringAsync(UpdateXmlUrl);
                 var updateInfo = ParseUpdateXml(response);
 
@@ -126,6 +134,7 @@ namespace TarkovHelper.Services
             }
             catch (Exception ex)
             {
+                _lastError = ex;
                 _log.Error("Failed to check for updates", ex);
                 _lastCheckTime = DateTime.Now;
                 UpdateCheckCompleted?.Invoke(this, new UpdateCheckEventArgs(null, ex));
@@ -154,6 +163,9 @@ namespace TarkovHelper.Services
             AutoUpdaterDotNET.AutoUpdater.InstalledVersion = _currentVersion;
             AutoUpdaterDotNET.AutoUpdater.ShowSkipButton = false;
             AutoUpdaterDotNET.AutoUpdater.ShowRemindLaterButton = false;
+            AutoUpdaterDotNET.AutoUpdater.InstallationPath = AppDomain.CurrentDomain.BaseDirectory;
+            AutoUpdaterDotNET.AutoUpdater.ClearAppDirectory = false;
+            AutoUpdaterDotNET.AutoUpdater.HttpUserAgent = "TarkovHelper-Updater";
             AutoUpdaterDotNET.AutoUpdater.Start(UpdateXmlUrl);
         }
 
