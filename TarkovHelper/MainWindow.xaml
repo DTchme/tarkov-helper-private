@@ -525,6 +525,46 @@
                                             ToolTip="캐시 및 모든 다운로드 데이터 (퀘스트, 아이템 등) 삭제"/>
                                 </WrapPanel>
 
+                                <!-- Application Update Section -->
+                                <Border BorderThickness="0,1,0,0" BorderBrush="{StaticResource BorderBrush}"
+                                        Margin="0,12,0,0" Padding="0,16,0,0">
+                                    <StackPanel>
+                                        <TextBlock Text="프로그램 업데이트"
+                                                   FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
+                                                   Foreground="{StaticResource TextPrimaryBrush}"
+                                                   Margin="0,0,0,8"/>
+
+                                        <TextBlock Text="GitHub에서 최신 배포 버전을 확인하고 사용자 데이터를 유지한 채 업그레이드합니다."
+                                                   FontSize="{DynamicResource FontSizeXSmall}"
+                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                   TextWrapping="Wrap"
+                                                   Margin="0,0,0,8"/>
+
+                                        <TextBlock x:Name="TxtCurrentAppVersion"
+                                                   Text="현재 버전 확인 중..."
+                                                   FontSize="{DynamicResource FontSizeXSmall}"
+                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                   Margin="0,0,0,10"/>
+
+                                        <Grid Margin="0,0,0,8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Button x:Name="BtnCheckAppUpdate" Content="업데이트 확인"
+                                                    Padding="12,8" Margin="0,0,12,0"
+                                                    Click="BtnCheckAppUpdate_Click"/>
+                                            <TextBlock x:Name="TxtAppUpdateStatus"
+                                                       Grid.Column="1"
+                                                       Text=""
+                                                       FontSize="{DynamicResource FontSizeXSmall}"
+                                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                                       VerticalAlignment="Center"
+                                                       TextWrapping="Wrap"/>
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+
                                 <!-- Data Update Section -->
                                 <Border BorderThickness="0,1,0,0" BorderBrush="{StaticResource BorderBrush}"
                                         Margin="0,12,0,0" Padding="0,16,0,0">

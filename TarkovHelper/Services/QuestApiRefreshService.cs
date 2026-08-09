@@ -520,6 +520,41 @@ public sealed class QuestApiRefreshService
         return result;
     }
 
+    private static void ApplyKnownCoordinateCorrections(
+        JsonElement task,
+        IDictionary<string, string> coordinateAssignments)
+    {
+        const string topSecretQuestId = "626bd75d5bef5d7d590bd415";
+        if (!string.Equals(GetString(task, "id"), topSecretQuestId, StringComparison.OrdinalIgnoreCase) ||
+            !task.TryGetProperty("objectives", out var objectives) ||
+            objectives.ValueKind != JsonValueKind.Array)
+            return;
+
+        foreach (var objective in objectives.EnumerateArray())
+        {
+            var objectiveId = GetString(objective, "id");
+            var description = NormalizeText(GetString(objective, "description") ?? string.Empty);
+            if (string.IsNullOrWhiteSpace(objectiveId) ||
+                !description.Contains("military hdd with archived flight routes", StringComparison.Ordinal))
+                continue;
+
+            // TarkovTracker's legacy Lighthouse percentage point uses an obsolete map canvas.
+            // This world coordinate matches the radar commandant office quest marker and the
+            // commandant-room key marker bundled from the current Lighthouse map dataset.
+            coordinateAssignments[objectiveId] = JsonSerializer.Serialize(new[]
+            {
+                new
+                {
+                    X = 343.402d,
+                    Y = 1d,
+                    Z = 544.7055d,
+                    FloorId = (string?)null
+                }
+            });
+            break;
+        }
+    }
+
     private static bool IsCoordinateCapableObjective(string apiType, string description)
     {
         var value = NormalizeText(apiType + " " + description);
@@ -751,6 +786,7 @@ public sealed class QuestApiRefreshService
                     objectives.ValueKind == JsonValueKind.Array)
                 {
                     var coordinateAssignments = BuildCoordinateAssignments(task, coordinateCatalog);
+                    ApplyKnownCoordinateCorrections(task, coordinateAssignments);
                     var sortOrder = 0;
                     foreach (var objective in objectives.EnumerateArray())
                     {
