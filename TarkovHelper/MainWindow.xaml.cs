@@ -1716,10 +1716,14 @@ public partial class MainWindow : Window
             // Show result dialog even if no quests to complete (to show in-progress quests)
             if (result.QuestsToComplete.Count == 0 && result.InProgressQuests.Count == 0)
             {
+                var message = result.TotalEventsFound > 0
+                    ? $"퀘스트 이벤트 {result.TotalEventsFound}개를 찾았지만, 업데이트할 퀘스트가 없습니다."
+                    : result.SkippedOtherProfileEvents > 0
+                        ? $"퀘스트 이벤트 {result.SkippedOtherProfileEvents}개를 찾았지만 현재 선택한 캐릭터와 다른 프로필의 기록입니다."
+                        : "로그에서 퀘스트 이벤트를 찾지 못했습니다.";
+
                 MessageBox.Show(
-                    result.TotalEventsFound > 0
-                        ? $"퀘스트 이벤트 {result.TotalEventsFound}개를 찾았지만, 업데이트할 퀘스트가 없습니다."
-                        : "로그에서 퀘스트 이벤트를 찾지 못했습니다.",
+                    message,
                     "동기화 완료",
                     MessageBoxButton.OK,
                     MessageBoxImage.Information);
