@@ -144,10 +144,10 @@
                                 Margin="0,0,12,0" Click="BtnProfile_Click"
                                 ToolTip="프로필 설정 (에디션, 프레스티지, 스캐브 평판 등)"/>
 
-                        <!-- Reset Progress -->
-                        <Button x:Name="BtnResetProgress" Content="↩ 퀘스트 재구축" Padding="10,6"
+                        <!-- Restore Progress -->
+                        <Button x:Name="BtnResetProgress" Content="↩ 퀘스트 복원" Padding="10,6"
                                 Margin="0,0,8,0" Click="BtnResetProgress_Click"
-                                ToolTip="현재 프로필의 퀘스트/목표 진행도를 초기화하고 로그에서 다시 복원"/>
+                                ToolTip="로그가 불완전하면 기존 진행도를 유지한 채 안전하게 병합"/>
 
                         <!-- Settings -->
                         <Button x:Name="BtnSettings" Content="⚙" Padding="10,6"

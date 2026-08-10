@@ -1202,7 +1202,7 @@ public partial class MainWindow : Window
 
 
     /// <summary>
-    /// Reset all progress with confirmation
+    /// Restore progress from logs without discarding a more complete saved profile.
     /// </summary>
     private async void BtnResetProgress_Click(object sender, RoutedEventArgs e)
     {
@@ -1220,9 +1220,9 @@ public partial class MainWindow : Window
         var currentProfile = ProfileService.Instance.CurrentProfile;
         var confirmation = MessageBox.Show(
             $"{currentProfile} 로그를 먼저 분석하고 적용할 내용을 미리 보여줍니다.\n\n" +
-            "미리보기에서 확인을 눌러야 퀘스트 진행도와 세부 목표가 초기화됩니다. " +
-            "은신처와 아이템 보유량은 유지됩니다. 계속하시겠습니까?",
-            "퀘스트 진행도 재구축",
+            "로그가 기존 저장 데이터보다 불완전하면 기존 진행도는 삭제하지 않고 확인된 상태만 병합합니다. " +
+            "은신처와 아이템 보유량도 유지됩니다. 계속하시겠습니까?",
+            "퀘스트 진행도 복원",
             MessageBoxButton.YesNo,
             MessageBoxImage.Warning);
 
@@ -1553,13 +1553,14 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Rebuild quest progress from exact log events. Nothing is deleted until the
-    /// user has reviewed and confirmed the preview.
+    /// Restore quest progress from exact log events. A destructive replacement is
+    /// allowed only when the log covers every explicit state in the saved profile;
+    /// otherwise the confirmed states are merged into existing data.
     /// </summary>
     private async Task PerformQuestRebuildAsync(string logPath, ProfileType profileType)
     {
         SyncResult syncResult;
-        ShowLoadingOverlay("재구축할 로그 파일 스캔 중...");
+        ShowLoadingOverlay("복원할 로그 파일 스캔 중...");
 
         try
         {
@@ -1580,7 +1581,7 @@ public partial class MainWindow : Window
             HideLoadingOverlay();
             MessageBox.Show(
                 $"로그 분석 중 오류가 발생했습니다. 기존 진행도는 변경되지 않았습니다.\n\n{ex.Message}",
-                "재구축 오류",
+                "복원 오류",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
             return;
@@ -1593,9 +1594,9 @@ public partial class MainWindow : Window
         {
             MessageBox.Show(
                 syncResult.TotalEventsFound > 0
-                    ? "현재 퀘스트 DB와 매칭되는 재구축 대상이 없습니다. 기존 진행도는 변경되지 않았습니다."
+                    ? "현재 퀘스트 DB와 매칭되는 복원 대상이 없습니다. 기존 진행도는 변경되지 않았습니다."
                     : $"현재 {profileType} 프로필과 일치하는 퀘스트 로그를 찾지 못했습니다. 기존 진행도는 변경되지 않았습니다.",
-                "재구축 취소",
+                "복원 취소",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
             return;
@@ -1605,12 +1606,22 @@ public partial class MainWindow : Window
         if (selectedChanges == null || selectedChanges.Count == 0)
         {
             MessageBox.Show(
-                "재구축을 취소했습니다. 기존 진행도는 변경되지 않았습니다.",
-                "재구축 취소",
+                "복원을 취소했습니다. 기존 진행도는 변경되지 않았습니다.",
+                "복원 취소",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
             return;
         }
+
+        var existingProgress = await UserDataDbService.Instance.LoadQuestProgressAsync(profileType);
+        var restoredQuestNames = selectedChanges
+            .Where(change => !string.IsNullOrWhiteSpace(change.NormalizedName))
+            .Select(change => change.NormalizedName)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var restoredQuestCount = restoredQuestNames.Count;
+        var missingSavedQuestCount = existingProgress.Keys.Count(savedQuestName =>
+            !restoredQuestNames.Contains(savedQuestName));
+        var preserveExistingProgress = missingSavedQuestCount > 0;
 
         string? backupPath = null;
         var destructiveStepStarted = false;
@@ -1624,7 +1635,7 @@ public partial class MainWindow : Window
             UpdateQuestSyncUI();
         }
 
-        ShowLoadingOverlay("사용자 DB 백업 및 퀘스트 진행도 재구축 중...");
+        ShowLoadingOverlay("사용자 DB 백업 및 퀘스트 진행도 복원 중...");
 
         try
         {
@@ -1632,7 +1643,10 @@ public partial class MainWindow : Window
                 .CreateTimestampedBackupAsync($"quest-rebuild-{profileType}");
 
             destructiveStepStarted = true;
-            await QuestProgressService.Instance.ResetAllProgressAsync(profileType);
+            if (!preserveExistingProgress)
+            {
+                await QuestProgressService.Instance.ResetAllProgressAsync(profileType);
+            }
             await _logSyncService.ApplyQuestChangesAsync(selectedChanges);
 
             await LoadAndShowQuestListAsync();
@@ -1642,9 +1656,14 @@ public partial class MainWindow : Window
                 ? string.Empty
                 : $"\n\n백업: {backupPath}";
 
+            var completionText = preserveExistingProgress
+                ? $"로그에서 복원 가능한 상태 {restoredQuestCount}개에 기존 저장 상태 중 {missingSavedQuestCount}개가 없어, " +
+                  $"기존 진행도를 유지하고 {selectedChanges.Count}개의 상태만 안전하게 병합했습니다."
+                : $"{selectedChanges.Count}개의 퀘스트 상태를 로그 기준으로 재구축했습니다.";
+
             MessageBox.Show(
-                $"{selectedChanges.Count}개의 퀘스트 상태를 로그 기준으로 재구축했습니다.{backupText}",
-                "재구축 완료",
+                $"{completionText}{backupText}",
+                "복원 완료",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
         }
@@ -1669,8 +1688,8 @@ public partial class MainWindow : Window
 
             HideLoadingOverlay();
             MessageBox.Show(
-                $"퀘스트 재구축에 실패했습니다: {ex.Message}{restoreMessage}",
-                "재구축 오류",
+                $"퀘스트 복원에 실패했습니다: {ex.Message}{restoreMessage}",
+                "복원 오류",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
         }

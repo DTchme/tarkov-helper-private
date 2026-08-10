@@ -431,7 +431,7 @@ namespace TarkovHelper.Pages
             return status switch
             {
                 QuestStatus.Locked => "잠김",
-                QuestStatus.Available => "미수락",
+                QuestStatus.Available => "조건 충족",
                 QuestStatus.Active => "진행중",
                 QuestStatus.Done => "완료",
                 QuestStatus.Failed => "실패",
@@ -601,7 +601,7 @@ namespace TarkovHelper.Pages
             var playerLevel = SettingsService.Instance.PlayerLevel;
             var lockedTotal = stats.Locked + stats.LevelLocked;
             TxtStats.Text = $"레벨 {playerLevel} | {stats.Total}개 중 {filtered.Count}개 표시 중 | " +
-                           $"진행 중: {stats.Active} | 미수락: {stats.Available} | 잠김: {lockedTotal} | 완료: {stats.Done} | 실패: {stats.Failed} | 불가: {stats.Unavailable}";
+                           $"진행 중: {stats.Active} | 조건 충족: {stats.Available} | 잠김: {lockedTotal} | 완료: {stats.Done} | 실패: {stats.Failed} | 불가: {stats.Unavailable}";
 
             // Kappa progress UI is intentionally disabled in 1.1+/Season 1.
         }
