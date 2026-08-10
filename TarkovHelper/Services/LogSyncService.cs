@@ -220,9 +220,16 @@ namespace TarkovHelper.Services
             {
                 using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
                 using var reader = new StreamReader(stream);
-                var buffer = new char[16 * 1024];
-                var read = await reader.ReadBlockAsync(buffer, 0, buffer.Length);
-                return DetectLogProfile(new string(buffer, 0, read));
+                var latestProfile = LogProfileKind.Unknown;
+
+                while (await reader.ReadLineAsync() is { } line)
+                {
+                    var detectedProfile = DetectLogProfile(line);
+                    if (detectedProfile != LogProfileKind.Unknown)
+                        latestProfile = detectedProfile;
+                }
+
+                return latestProfile;
             }
             catch
             {
@@ -641,7 +648,12 @@ namespace TarkovHelper.Services
                 using var reader = new StreamReader(stream);
 
                 var fileName = Path.GetFileName(filePath);
-                var sourceProfile = await DetectLogProfileFromFileAsync(filePath);
+                // Full-file parsing tracks every profile switch in sequence. Tail parsing starts
+                // with the most recent profile because its preceding switch line may be outside
+                // the last 50 KB segment.
+                var sourceProfile = tailOnly
+                    ? await DetectLogProfileFromFileAsync(filePath)
+                    : LogProfileKind.Unknown;
 
                 // If tailOnly, skip to last 50KB
                 if (tailOnly && stream.Length > 50000)
@@ -675,10 +687,19 @@ namespace TarkovHelper.Services
             var jsonBuilder = new System.Text.StringBuilder();
             bool inJson = false;
             int braceCount = 0;
+            var currentSourceProfile = sourceProfile;
+            var jsonSourceProfile = sourceProfile;
 
             for (int i = 0; i < lines.Length; i++)
             {
                 var line = lines[i].TrimEnd('\r');
+
+                // A single EFT log file can contain multiple character sessions when the user
+                // switches between PvE, permanent PvP, and seasonal PvP without restarting the
+                // client. Attribute each JSON notification to the last profile marker before it.
+                var detectedProfile = DetectLogProfile(line);
+                if (detectedProfile != LogProfileKind.Unknown)
+                    currentSourceProfile = detectedProfile;
 
                 // Check if this line starts a JSON block (line starting with '{')
                 if (!inJson && line.TrimStart().StartsWith("{"))
@@ -686,6 +707,7 @@ namespace TarkovHelper.Services
                     inJson = true;
                     jsonBuilder.Clear();
                     braceCount = 0;
+                    jsonSourceProfile = currentSourceProfile;
                 }
 
                 if (inJson)
@@ -705,7 +727,7 @@ namespace TarkovHelper.Services
                         inJson = false;
                         var jsonString = jsonBuilder.ToString();
 
-                        var evt = ParseJsonBlock(jsonString, sourceFile, sourceProfile);
+                        var evt = ParseJsonBlock(jsonString, sourceFile, jsonSourceProfile);
                         if (evt != null)
                         {
                             events.Add(evt);
