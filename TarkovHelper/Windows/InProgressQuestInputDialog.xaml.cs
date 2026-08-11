@@ -241,31 +241,11 @@ public partial class InProgressQuestInputDialog : Window
             .Select(q => q.Quest)
             .ToList();
 
-        var allPrereqs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var quest in selectedQuests)
-        {
-            if (string.IsNullOrEmpty(quest.NormalizedName)) continue;
-
-            var prereqs = _graphService.GetAllPrerequisites(quest.NormalizedName);
-            foreach (var prereq in prereqs)
-            {
-                if (_progressService.GetStatus(prereq) != QuestStatus.Done &&
-                    !string.IsNullOrEmpty(prereq.NormalizedName))
-                {
-                    allPrereqs.Add(prereq.NormalizedName);
-                }
-            }
-        }
-
-        // Remove selected quests from prerequisites
-        foreach (var quest in selectedQuests)
-        {
-            if (!string.IsNullOrEmpty(quest.NormalizedName))
-            {
-                allPrereqs.Remove(quest.NormalizedName);
-            }
-        }
+        var allPrereqs = _progressService
+            .GetSafeCompletedPrerequisites(selectedQuests)
+            .Where(prerequisite => !string.IsNullOrEmpty(prerequisite.NormalizedName))
+            .Select(prerequisite => prerequisite.NormalizedName!)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var prereqItems = allPrereqs
             .Select(name => _graphService.GetTask(name))
@@ -308,36 +288,16 @@ public partial class InProgressQuestInputDialog : Window
             .Select(q => q.Quest)
             .ToList() ?? new List<TarkovTask>();
 
-        var prerequisitesToComplete = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var quest in selectedQuests)
-        {
-            if (string.IsNullOrEmpty(quest.NormalizedName)) continue;
-
-            var prereqs = _graphService.GetAllPrerequisites(quest.NormalizedName);
-            foreach (var prereq in prereqs)
-            {
-                if (_progressService.GetStatus(prereq) != QuestStatus.Done &&
-                    !string.IsNullOrEmpty(prereq.NormalizedName))
-                {
-                    prerequisitesToComplete.Add(prereq.NormalizedName);
-                }
-            }
-        }
-
-        // Remove selected quests from prerequisites
-        foreach (var quest in selectedQuests)
-        {
-            if (!string.IsNullOrEmpty(quest.NormalizedName))
-            {
-                prerequisitesToComplete.Remove(quest.NormalizedName);
-            }
-        }
+        var prerequisitesToComplete = _progressService
+            .GetSafeCompletedPrerequisites(selectedQuests)
+            .Where(prerequisite => !string.IsNullOrEmpty(prerequisite.NormalizedName))
+            .Select(prerequisite => prerequisite.NormalizedName!)
+            .ToList();
 
         return new InProgressQuestInputResult
         {
             SelectedQuests = selectedQuests,
-            PrerequisitesToComplete = prerequisitesToComplete.ToList()
+            PrerequisitesToComplete = prerequisitesToComplete
         };
     }
 

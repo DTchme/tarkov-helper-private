@@ -140,7 +140,7 @@
 
                         <!-- Description -->
                         <TextBlock x:Name="TxtPrerequisitesDesc" Grid.Row="1"
-                                   Text="선택한 퀘스트의 선행 퀘스트가 여기에 표시됩니다.&#x0a;적용 시 자동으로 완료 처리됩니다."
+                                   Text="선택한 퀘스트의 필수 완료 선행 퀘스트만 표시됩니다.&#x0a;OR 분기·시작 조건·선택형 퀘스트는 자동 처리하지 않습니다."
                                    FontSize="{DynamicResource FontSizeTiny}" Margin="12,8"
                                    Foreground="{DynamicResource TextSecondaryBrush}"
                                    TextWrapping="Wrap"/>
