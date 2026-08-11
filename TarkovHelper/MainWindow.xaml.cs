@@ -590,27 +590,7 @@ public partial class MainWindow : Window
             {
                 tasks = progressService.AllTasks.ToList();
                 _log.Debug($"Loaded {tasks.Count} quests from DB for {currentProfile}");
-
-                try
-                {
-                    var inferredPrerequisites = progressService
-                        .GetSafeCompletedPrerequisitesForActiveQuests();
-                    if (inferredPrerequisites.Count > 0)
-                    {
-                        await UserDataDbService.Instance.CreateTimestampedBackupAsync(
-                            $"active-prerequisites-{currentProfile}");
-                        await progressService.ApplyQuestChangesBatchAsync(
-                            inferredPrerequisites.Select(task => (task, QuestStatus.Done)),
-                            applyAlternativeConsequences: false,
-                            profileType: currentProfile,
-                            preserveExistingExplicitState: true);
-                        _log.Info($"Safely completed {inferredPrerequisites.Count} prerequisites for active quests");
-                    }
-                }
-                catch (Exception inferenceEx)
-                {
-                    _log.Warning($"Safe active prerequisite inference failed: {inferenceEx.Message}");
-                }
+                await ApplySafeActivePrerequisitesAsync(progressService, currentProfile);
             }
 
             // ObjectiveProgressService 비동기 로드
@@ -715,6 +695,32 @@ public partial class MainWindow : Window
         }
     }
 
+    private async Task ApplySafeActivePrerequisitesAsync(
+        QuestProgressService progressService,
+        ProfileType profileType)
+    {
+        try
+        {
+            var inferredPrerequisites = progressService
+                .GetSafeCompletedPrerequisitesForActiveQuests();
+            if (inferredPrerequisites.Count == 0)
+                return;
+
+            await UserDataDbService.Instance.CreateTimestampedBackupAsync(
+                $"active-prerequisites-{profileType}");
+            await progressService.ApplyQuestChangesBatchAsync(
+                inferredPrerequisites.Select(task => (task, QuestStatus.Done)),
+                applyAlternativeConsequences: false,
+                profileType: profileType,
+                preserveExistingExplicitState: true);
+            _log.Info($"Safely completed {inferredPrerequisites.Count} prerequisites for active quests");
+        }
+        catch (Exception inferenceEx)
+        {
+            _log.Warning($"Safe active prerequisite inference failed: {inferenceEx.Message}");
+        }
+    }
+
     /// <summary>
     /// 프로필 라디오 버튼 변경 핸들러
     /// </summary>
@@ -780,6 +786,12 @@ public partial class MainWindow : Window
             }
 
             _log.Info($"Data verification complete. Quests: {QuestProgressService.Instance.AllTasks.Count}, Retry: {retryCount}");
+
+            // This is the normal startup/profile-switch path. Apply the same conservative
+            // prerequisite recovery used by log restore and manual quest refresh.
+            await ApplySafeActivePrerequisitesAsync(
+                QuestProgressService.Instance,
+                currentProfile);
 
             // 4. 퀘스트 그래프 서비스 초기화 (의존성 추적 및 카파 게이지용)
             QuestGraphService.Instance.Initialize(QuestProgressService.Instance.AllTasks.ToList());
