@@ -590,6 +590,27 @@ public partial class MainWindow : Window
             {
                 tasks = progressService.AllTasks.ToList();
                 _log.Debug($"Loaded {tasks.Count} quests from DB for {currentProfile}");
+
+                try
+                {
+                    var inferredPrerequisites = progressService
+                        .GetSafeCompletedPrerequisitesForActiveQuests();
+                    if (inferredPrerequisites.Count > 0)
+                    {
+                        await UserDataDbService.Instance.CreateTimestampedBackupAsync(
+                            $"active-prerequisites-{currentProfile}");
+                        await progressService.ApplyQuestChangesBatchAsync(
+                            inferredPrerequisites.Select(task => (task, QuestStatus.Done)),
+                            applyAlternativeConsequences: false,
+                            profileType: currentProfile,
+                            preserveExistingExplicitState: true);
+                        _log.Info($"Safely completed {inferredPrerequisites.Count} prerequisites for active quests");
+                    }
+                }
+                catch (Exception inferenceEx)
+                {
+                    _log.Warning($"Safe active prerequisite inference failed: {inferenceEx.Message}");
+                }
             }
 
             // ObjectiveProgressService 비동기 로드
@@ -1809,8 +1830,8 @@ public partial class MainWindow : Window
                     _ => ""
                 };
 
-                // Apply only the exact state represented by the log event. Do not infer
-                // prerequisite completion or mutually-exclusive quest failures after the 1.1 overhaul.
+                // Apply the exact log state first. A Started event may then infer only mandatory
+                // completed prerequisites; ambiguous branches and alternative quests remain untouched.
                 QuestStatus? exactStatus = evt.EventType switch
                 {
                     QuestEventType.Completed => QuestStatus.Done,
@@ -1821,16 +1842,52 @@ public partial class MainWindow : Window
 
                 if (exactStatus.HasValue)
                 {
-                    _ = progressService.ApplyQuestChangesBatchAsync(
-                        new[] { (task, exactStatus.Value) },
-                        applyAlternativeConsequences: false,
-                        profileType: ProfileService.Instance.CurrentProfile);
+                    _ = ApplyQuestEventAndInferPrerequisitesAsync(
+                        progressService,
+                        task,
+                        exactStatus.Value);
                 }
-
-                // Refresh quest list if visible
-                _questListPage?.RefreshDisplay();
             }
         });
+    }
+
+    private async Task ApplyQuestEventAndInferPrerequisitesAsync(
+        QuestProgressService progressService,
+        TarkovTask task,
+        QuestStatus status)
+    {
+        try
+        {
+            var profileType = ProfileService.Instance.CurrentProfile;
+            await progressService.ApplyQuestChangesBatchAsync(
+                new[] { (task, status) },
+                applyAlternativeConsequences: false,
+                profileType: profileType);
+
+            if (status == QuestStatus.Active)
+            {
+                var inferredPrerequisites = progressService
+                    .GetSafeCompletedPrerequisitesForActiveQuests();
+                if (inferredPrerequisites.Count > 0)
+                {
+                    await UserDataDbService.Instance.CreateTimestampedBackupAsync(
+                        $"active-prerequisites-{profileType}");
+                    await progressService.ApplyQuestChangesBatchAsync(
+                        inferredPrerequisites.Select(prerequisite => (prerequisite, QuestStatus.Done)),
+                        applyAlternativeConsequences: false,
+                        profileType: profileType,
+                        preserveExistingExplicitState: true);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.Warning($"Quest event progress update failed: {ex.Message}");
+        }
+        finally
+        {
+            await Dispatcher.InvokeAsync(() => _questListPage?.RefreshDisplay());
+        }
     }
 
     /// <summary>
@@ -1908,31 +1965,52 @@ public partial class MainWindow : Window
     /// <summary>
     /// Apply the in-progress quest selection result
     /// </summary>
-    private void ApplyInProgressQuestResult(InProgressQuestInputResult result)
+    private async void ApplyInProgressQuestResult(InProgressQuestInputResult result)
     {
         var progressService = QuestProgressService.Instance;
+        var profileType = ProfileService.Instance.CurrentProfile;
 
-        // Complete all prerequisites
-        var completedCount = 0;
-        foreach (var prereqName in result.PrerequisitesToComplete)
+        try
         {
-            var prereqTask = progressService.GetTask(prereqName);
-            if (prereqTask != null && progressService.GetStatus(prereqTask) != QuestStatus.Done)
+            await UserDataDbService.Instance.CreateTimestampedBackupAsync(
+                $"manual-active-quests-{profileType}");
+
+            await progressService.ApplyQuestChangesBatchAsync(
+                result.SelectedQuests.Select(task => (task, QuestStatus.Active)),
+                applyAlternativeConsequences: false,
+                profileType: profileType);
+
+            var prerequisites = result.PrerequisitesToComplete
+                .Select(progressService.GetTask)
+                .Where(task => task != null)
+                .Cast<TarkovTask>()
+                .ToList();
+
+            if (prerequisites.Count > 0)
             {
-                progressService.CompleteQuest(prereqTask, completePrerequisites: false);
-                completedCount++;
+                await progressService.ApplyQuestChangesBatchAsync(
+                    prerequisites.Select(task => (task, QuestStatus.Done)),
+                    applyAlternativeConsequences: false,
+                    profileType: profileType,
+                    preserveExistingExplicitState: true);
             }
+
+            _questListPage?.RefreshDisplay();
+
+            MessageBox.Show(
+                string.Format(_loc.QuestsAppliedSuccess, result.SelectedQuests.Count, prerequisites.Count),
+                "알림",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
         }
-
-        // Refresh quest list
-        _questListPage?.RefreshDisplay();
-
-        // Show success message
-        MessageBox.Show(
-            string.Format(_loc.QuestsAppliedSuccess, result.SelectedQuests.Count, completedCount),
-            "알림",
-            MessageBoxButton.OK,
-            MessageBoxImage.Information);
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                $"진행 중 퀘스트 적용에 실패했습니다: {ex.Message}",
+                "오류",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
     }
 
     #endregion

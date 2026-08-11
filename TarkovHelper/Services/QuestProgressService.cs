@@ -1,5 +1,6 @@
 using TarkovHelper.Debug;
 using TarkovHelper.Models;
+using Microsoft.Data.Sqlite;
 
 namespace TarkovHelper.Services
 {
@@ -275,15 +276,10 @@ namespace TarkovHelper.Services
             // Explicit log/manual states take precedence over the reconstructed quest graph.
             // This is important after a quest-line overhaul: a quest that the game says is started
             // must stay Active even if the locally reconstructed prerequisites differ.
-            if (!string.IsNullOrEmpty(taskId) && _questProgress.TryGetValue(taskId, out var statusById))
+            if (TryGetExplicitStatus(task, out var explicitStatus))
             {
-                if (statusById is QuestStatus.Active or QuestStatus.Done or QuestStatus.Failed)
-                    return statusById;
-            }
-            else if (!string.IsNullOrEmpty(task.NormalizedName) && _questProgress.TryGetValue(task.NormalizedName, out var statusByName))
-            {
-                if (statusByName is QuestStatus.Active or QuestStatus.Done or QuestStatus.Failed)
-                    return statusByName;
+                if (explicitStatus is QuestStatus.Active or QuestStatus.Done or QuestStatus.Failed)
+                    return explicitStatus;
             }
 
             // Circular reference protection for prerequisite checking
@@ -339,6 +335,188 @@ namespace TarkovHelper.Services
                     _getStatusVisited = null;
                 }
             }
+        }
+
+        /// <summary>
+        /// Returns only a state explicitly stored by a log event or manual input.
+        /// Derived Available/Locked states are intentionally excluded from this lookup.
+        /// </summary>
+        private bool TryGetExplicitStatus(TarkovTask task, out QuestStatus status)
+        {
+            if (task.Ids != null)
+            {
+                foreach (var id in task.Ids)
+                {
+                    if (!string.IsNullOrEmpty(id) && _questProgress.TryGetValue(id, out status))
+                        return true;
+                }
+            }
+
+            if (!string.IsNullOrEmpty(task.NormalizedName) &&
+                _questProgress.TryGetValue(task.NormalizedName, out status))
+            {
+                return true;
+            }
+
+            status = default;
+            return false;
+        }
+
+        /// <summary>
+        /// Finds prerequisites that can safely be inferred as completed from explicitly Active quests.
+        /// Only mandatory Complete requirements are followed. Ambiguous OR branches, Start/Accept,
+        /// Fail, and mutually-exclusive quests are not invented.
+        /// </summary>
+        public IReadOnlyList<TarkovTask> GetSafeCompletedPrerequisitesForActiveQuests()
+        {
+            var activeQuests = _allTasks.Where(task =>
+                TryGetExplicitStatus(task, out var status) && status == QuestStatus.Active);
+
+            return GetSafeCompletedPrerequisites(activeQuests);
+        }
+
+        /// <summary>
+        /// Finds prerequisites that can safely be inferred as completed for the supplied root quests.
+        /// Current explicit states always win over inference.
+        /// </summary>
+        public IReadOnlyList<TarkovTask> GetSafeCompletedPrerequisites(IEnumerable<TarkovTask> rootQuests)
+        {
+            var roots = rootQuests.ToList();
+            var rootKeys = roots
+                .Select(task => task.Ids?.FirstOrDefault() ?? task.NormalizedName)
+                .Where(key => !string.IsNullOrEmpty(key))
+                .Cast<string>()
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var inferred = new Dictionary<string, TarkovTask>(StringComparer.OrdinalIgnoreCase);
+            var expanded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var rootQuest in roots)
+            {
+                CollectSafeCompletedPrerequisites(rootQuest, inferred, expanded);
+            }
+
+            // A malformed/cyclic graph must never turn a selected or active root quest into Done.
+            foreach (var rootKey in rootKeys)
+            {
+                inferred.Remove(rootKey);
+            }
+
+            return inferred.Values
+                .OrderBy(task => task.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        private void CollectSafeCompletedPrerequisites(
+            TarkovTask task,
+            Dictionary<string, TarkovTask> inferred,
+            HashSet<string> expanded)
+        {
+            var taskKey = task.Ids?.FirstOrDefault() ?? task.NormalizedName;
+            if (string.IsNullOrEmpty(taskKey) || !expanded.Add(taskKey))
+                return;
+
+            if (task.TaskRequirements != null && task.TaskRequirements.Count > 0)
+            {
+                foreach (var requirement in task.TaskRequirements.Where(req => req.GroupId == 0))
+                {
+                    if (RequiresCompletedStatus(requirement))
+                    {
+                        AddSafeCompletedRequirement(requirement, inferred, expanded);
+                    }
+                }
+
+                foreach (var group in task.TaskRequirements
+                    .Where(req => req.GroupId > 0)
+                    .GroupBy(req => req.GroupId))
+                {
+                    var groupRequirements = group.ToList();
+
+                    // An existing explicit completion identifies the chosen OR branch.
+                    foreach (var requirement in groupRequirements)
+                    {
+                        var requiredTask = ResolveRequiredTask(requirement);
+                        if (requiredTask != null &&
+                            TryGetExplicitStatus(requiredTask, out var status) &&
+                            status == QuestStatus.Done)
+                        {
+                            CollectSafeCompletedPrerequisites(requiredTask, inferred, expanded);
+                        }
+                    }
+
+                    // A one-item OR group is not ambiguous and can be handled like an AND condition.
+                    if (groupRequirements.Count == 1 && RequiresCompletedStatus(groupRequirements[0]))
+                    {
+                        AddSafeCompletedRequirement(groupRequirements[0], inferred, expanded);
+                    }
+                }
+
+                return;
+            }
+
+            // Legacy data has no typed requirement information; Previous historically means Complete.
+            if (task.Previous == null)
+                return;
+
+            foreach (var previousName in task.Previous)
+            {
+                var requiredTask = GetTask(previousName);
+                AddSafeCompletedTask(requiredTask, inferred, expanded);
+            }
+        }
+
+        private void AddSafeCompletedRequirement(
+            TaskRequirement requirement,
+            Dictionary<string, TarkovTask> inferred,
+            HashSet<string> expanded)
+        {
+            AddSafeCompletedTask(ResolveRequiredTask(requirement), inferred, expanded);
+        }
+
+        private void AddSafeCompletedTask(
+            TarkovTask? requiredTask,
+            Dictionary<string, TarkovTask> inferred,
+            HashSet<string> expanded)
+        {
+            if (requiredTask == null)
+                return;
+
+            if (TryGetExplicitStatus(requiredTask, out var explicitStatus))
+            {
+                if (explicitStatus == QuestStatus.Done)
+                {
+                    CollectSafeCompletedPrerequisites(requiredTask, inferred, expanded);
+                }
+                return;
+            }
+
+            // The helper cannot know which mutually-exclusive branch the player chose.
+            if (HasAlternativeQuests(requiredTask))
+                return;
+
+            var requiredKey = requiredTask.Ids?.FirstOrDefault() ?? requiredTask.NormalizedName;
+            if (string.IsNullOrEmpty(requiredKey))
+                return;
+
+            inferred.TryAdd(requiredKey, requiredTask);
+            CollectSafeCompletedPrerequisites(requiredTask, inferred, expanded);
+        }
+
+        private TarkovTask? ResolveRequiredTask(TaskRequirement requirement)
+        {
+            return !string.IsNullOrEmpty(requirement.TaskId)
+                ? GetTaskById(requirement.TaskId)
+                : GetTask(requirement.TaskNormalizedName);
+        }
+
+        private static bool RequiresCompletedStatus(TaskRequirement requirement)
+        {
+            if (requirement.Status == null || requirement.Status.Count == 0)
+                return true;
+
+            return requirement.Status.All(status =>
+                status.Equals("complete", StringComparison.OrdinalIgnoreCase) ||
+                status.Equals("completed", StringComparison.OrdinalIgnoreCase) ||
+                status.Equals("success", StringComparison.OrdinalIgnoreCase));
         }
 
         /// <summary>
@@ -849,7 +1027,8 @@ namespace TarkovHelper.Services
         public async Task ApplyQuestChangesBatchAsync(
             IEnumerable<(TarkovTask Task, QuestStatus Status)> changes,
             bool applyAlternativeConsequences = true,
-            ProfileType? profileType = null)
+            ProfileType? profileType = null,
+            bool preserveExistingExplicitState = false)
         {
             var changedItems = new List<(string Id, string? NormalizedName, QuestStatus Status)>();
             var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -864,6 +1043,10 @@ namespace TarkovHelper.Services
                 switch (status)
                 {
                     case QuestStatus.Done:
+                        // Inferred completions must never race with and overwrite an exact log/manual state.
+                        if (preserveExistingExplicitState && TryGetExplicitStatus(task, out _))
+                            break;
+
                         // Complete without recursive save
                         if (CompleteQuestBatchInternal(task, visited, changedItems))
                         {
@@ -898,7 +1081,14 @@ namespace TarkovHelper.Services
                         break;
 
                     case QuestStatus.Active:
-                        if (!_questProgress.TryGetValue(taskKey, out var activeStatus) || activeStatus != QuestStatus.Active)
+                        // A replayed Started notification must not downgrade an explicit terminal state.
+                        if (TryGetExplicitStatus(task, out var activeStatus) &&
+                            activeStatus is QuestStatus.Done or QuestStatus.Failed)
+                        {
+                            break;
+                        }
+
+                        if (activeStatus != QuestStatus.Active)
                         {
                             _questProgress[taskKey] = QuestStatus.Active;
                             changedItems.Add((taskId ?? taskKey, task.NormalizedName, QuestStatus.Active));
@@ -1139,19 +1329,16 @@ namespace TarkovHelper.Services
             try
             {
                 var changedItems = new List<(string Id, string? NormalizedName, QuestStatus Status)>();
-                foreach (var kvp in _questProgress)
+                var savedIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var task in _allTasks)
                 {
-                    var normalizedName = kvp.Key;
-                    var status = kvp.Value;
+                    var id = task.Ids?.FirstOrDefault();
+                    if (string.IsNullOrEmpty(id) || !savedIds.Add(id))
+                        continue;
 
                     // ID 조회
-                    string id = normalizedName;
-                    if (_tasksByNormalizedName.TryGetValue(normalizedName, out var task))
-                    {
-                        id = task.Ids?.FirstOrDefault() ?? normalizedName;
-                    }
-                    
-                    changedItems.Add((id, normalizedName, status));
+                    if (TryGetExplicitStatus(task, out var status))
+                        changedItems.Add((id, task.NormalizedName, status));
                 }
                 
                 if (changedItems.Count > 0)
@@ -1220,22 +1407,63 @@ namespace TarkovHelper.Services
             try
             {
                 var actualProfileType = profileType ?? ProfileService.Instance.CurrentProfile;
-                var dbProgress = await _userDataDb.LoadQuestProgressAsync(actualProfileType);
+                var dbProgress = await LoadProgressRecordsFromDbAsync(actualProfileType);
 
                 _questProgress.Clear();
-                foreach (var kvp in dbProgress)
+                foreach (var record in dbProgress)
                 {
-                    _questProgress[kvp.Key] = kvp.Value;
-                    System.Diagnostics.Debug.WriteLine($"[QuestProgressService] Loaded progress: {kvp.Key} = {kvp.Value}");
+                    // The stable ID preserves state across quest renames. Keep the saved name too
+                    // so older callers that still use normalized names remain compatible.
+                    _questProgress[record.Id] = record.Status;
+                    if (!string.IsNullOrEmpty(record.NormalizedName))
+                        _questProgress[record.NormalizedName] = record.Status;
+
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[QuestProgressService] Loaded progress: {record.Id}/{record.NormalizedName} = {record.Status}");
                 }
 
-                System.Diagnostics.Debug.WriteLine($"[QuestProgressService] Loaded {_questProgress.Count} quest progress from DB");
+                System.Diagnostics.Debug.WriteLine($"[QuestProgressService] Loaded {dbProgress.Count} quest progress records from DB");
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[QuestProgressService] Failed to load progress from DB: {ex.Message}");
                 _questProgress.Clear();
             }
+        }
+
+        private async Task<List<(string Id, string? NormalizedName, QuestStatus Status)>>
+            LoadProgressRecordsFromDbAsync(ProfileType profileType)
+        {
+            await _userDataDb.InitializeAsync();
+
+            var result = new List<(string Id, string? NormalizedName, QuestStatus Status)>();
+            var connectionString = new SqliteConnectionStringBuilder
+            {
+                DataSource = _userDataDb.DatabasePath,
+                Mode = SqliteOpenMode.ReadOnly,
+                DefaultTimeout = 30,
+                Pooling = true,
+                Cache = SqliteCacheMode.Shared
+            }.ToString();
+
+            await using var connection = new SqliteConnection(connectionString);
+            await connection.OpenAsync();
+            await using var command = connection.CreateCommand();
+            command.CommandText =
+                "SELECT Id, NormalizedName, Status FROM QuestProgress WHERE ProfileType = @profileType";
+            command.Parameters.AddWithValue("@profileType", (int)profileType);
+            await using var reader = await command.ExecuteReaderAsync();
+
+            while (await reader.ReadAsync())
+            {
+                var id = reader.GetString(0);
+                var normalizedName = reader.IsDBNull(1) ? null : reader.GetString(1);
+                var statusText = reader.GetString(2);
+                if (Enum.TryParse<QuestStatus>(statusText, out var status))
+                    result.Add((id, normalizedName, status));
+            }
+
+            return result;
         }
 
         #endregion
