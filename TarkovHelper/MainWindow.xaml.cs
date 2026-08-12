@@ -8,6 +8,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Threading;
 using TarkovHelper.Debug;
 using TarkovHelper.Models;
 using TarkovHelper.Pages;
@@ -34,6 +35,11 @@ public partial class MainWindow : Window
     private List<HideoutModule>? _hideoutModules;
     private bool _isFullScreen;
     private FileSystemWatcher? _fontWatcher;
+    private readonly DispatcherTimer _questLogArchiveTimer = new()
+    {
+        Interval = TimeSpan.FromMinutes(5)
+    };
+    private bool _isQuestLogArchiveRunning;
 
     // Windows API for dark title bar
     [DllImport("dwmapi.dll", PreserveSig = true)]
@@ -54,6 +60,9 @@ public partial class MainWindow : Window
         _settingsService.PrestigeLevelChanged += OnPrestigeLevelChanged;
         _settingsService.FontFamilyNameChanged += OnFontFamilyNameChanged;
         ProfileService.Instance.ProfileChanged += OnProfileChanged;
+
+        _questLogArchiveTimer.Tick += QuestLogArchiveTimer_Tick;
+        Closed += (_, _) => _questLogArchiveTimer.Stop();
 
         // Apply dark title bar
         SourceInitialized += (s, e) => EnableDarkTitleBar();
@@ -141,7 +150,7 @@ public partial class MainWindow : Window
         InitializeFontSettings();
         ApplyFont(_settingsService.FontFamilyName);
         StartDatabaseUpdateService();
-        AutoStartLogMonitoring();
+        await AutoStartLogMonitoringAsync();
 
         RadioPvp.Checked += ProfileRadio_Checked;
         RadioPve.Checked += ProfileRadio_Checked;
@@ -446,11 +455,8 @@ public partial class MainWindow : Window
     /// <summary>
     /// Automatically start log monitoring on app launch if enabled
     /// </summary>
-    private void AutoStartLogMonitoring()
+    private async Task AutoStartLogMonitoringAsync()
     {
-        if (!_settingsService.LogMonitoringEnabled)
-            return;
-
         // Try to get log folder path (auto-detect if not set)
         var logPath = _settingsService.LogFolderPath;
 
@@ -466,13 +472,71 @@ public partial class MainWindow : Window
 
         if (!string.IsNullOrEmpty(logPath) && Directory.Exists(logPath))
         {
-            _logSyncService.StartMonitoring(logPath);
-            _logSyncService.QuestEventDetected -= OnQuestEventDetected;
-            _logSyncService.QuestEventDetected += OnQuestEventDetected;
-            _log.Info($"Auto-started log monitoring: {logPath}");
+            try
+            {
+                // Always archive existing quest events at startup, even when live
+                // monitoring is disabled. This lets users safely clean old EFT logs.
+                await _logSyncService.ArchiveExistingQuestLogsAsync(logPath);
+
+                if (_settingsService.LogMonitoringEnabled)
+                {
+                    _logSyncService.QuestEventDetected -= OnQuestEventDetected;
+                    _logSyncService.QuestEventDetected += OnQuestEventDetected;
+                    _logSyncService.StartMonitoring(logPath);
+
+                    // Close the small gap between the initial scan and watcher startup.
+                    await _logSyncService.ArchiveExistingQuestLogsAsync(logPath);
+                    _log.Info($"Auto-started log monitoring: {logPath}");
+                }
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"Automatic quest log archive failed: {ex.Message}");
+            }
+        }
+        else
+        {
+            try
+            {
+                await QuestLogArchiveService.Instance.InitializeAsync();
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"Quest log archive initialization failed: {ex.Message}");
+            }
         }
 
         UpdateQuestSyncUI();
+        _questLogArchiveTimer.Start();
+    }
+
+    /// <summary>
+    /// Periodically catches new quest events even when interactive live monitoring is disabled.
+    /// Unchanged files are checked by metadata only and are not parsed again.
+    /// </summary>
+    private async void QuestLogArchiveTimer_Tick(object? sender, EventArgs e)
+    {
+        if (_isQuestLogArchiveRunning)
+            return;
+
+        var logPath = _settingsService.LogFolderPath;
+        if (string.IsNullOrWhiteSpace(logPath) || !Directory.Exists(logPath))
+            return;
+
+        _isQuestLogArchiveRunning = true;
+        try
+        {
+            await _logSyncService.ArchiveExistingQuestLogsAsync(logPath);
+            UpdateQuestSyncUI();
+        }
+        catch (Exception ex)
+        {
+            _log.Warning($"Periodic quest log archive failed: {ex.Message}");
+        }
+        finally
+        {
+            _isQuestLogArchiveRunning = false;
+        }
     }
 
     /// <summary>
@@ -1206,20 +1270,24 @@ public partial class MainWindow : Window
     /// </summary>
     private async void BtnResetProgress_Click(object sender, RoutedEventArgs e)
     {
-        var logPath = _settingsService.LogFolderPath;
-        if (string.IsNullOrWhiteSpace(logPath) || !Directory.Exists(logPath))
+        var configuredLogPath = _settingsService.LogFolderPath;
+        var hasLogFolder = !string.IsNullOrWhiteSpace(configuredLogPath) && Directory.Exists(configuredLogPath);
+        var currentProfile = ProfileService.Instance.CurrentProfile;
+        var archivedEventCount = QuestLogArchiveService.Instance.GetCachedEventCount(currentProfile);
+
+        if (!hasLogFolder && archivedEventCount == 0)
         {
             MessageBox.Show(
-                "먼저 설정에서 Tarkov 로그 폴더를 지정해주세요.",
-                "로그 폴더 필요",
+                "현재 로그 폴더도 없고 이 캐릭터의 내부 백업 이벤트도 없습니다. 먼저 Tarkov 로그 폴더를 지정해주세요.",
+                "복원 자료 없음",
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
             return;
         }
 
-        var currentProfile = ProfileService.Instance.CurrentProfile;
+        var logPath = hasLogFolder ? configuredLogPath! : string.Empty;
         var confirmation = MessageBox.Show(
-            $"{currentProfile} 로그를 먼저 분석하고 적용할 내용을 미리 보여줍니다.\n\n" +
+            $"{currentProfile} 내부 백업과 현재 남아 있는 로그를 분석하고 적용할 내용을 미리 보여줍니다.\n\n" +
             "로그가 기존 저장 데이터보다 불완전하면 기존 진행도는 삭제하지 않고 확인된 상태만 병합합니다. " +
             "은신처와 아이템 보유량도 유지됩니다. 계속하시겠습니까?",
             "퀘스트 진행도 복원",
@@ -1502,7 +1570,7 @@ public partial class MainWindow : Window
     {
         // Update localized text
         TxtQuestSyncLabel.Text = "퀘스트 로그 동기화";
-        TxtQuestSyncDesc.Text = "게임 로그 파일에서 퀘스트 진행 상태를 동기화합니다. Tarkov 로그를 분석하여 완료된 퀘스트를 업데이트합니다.";
+        TxtQuestSyncDesc.Text = "앱 시작 시와 5분마다 퀘스트 이벤트만 사용자 DB에 가볍게 내부 백업합니다. 백업된 기록은 Tarkov 원본 로그를 지운 뒤에도 동기화와 복원에 사용됩니다.";
         BtnSyncQuest.Content = "퀘스트 동기화";
 
         // Update monitoring status
@@ -1515,8 +1583,16 @@ public partial class MainWindow : Window
 
         BtnToggleMonitoring.Content = isMonitoring ? "모니터링 중지" : "모니터링 시작";
 
-        // Disable sync button if log folder is not valid
-        BtnSyncQuest.IsEnabled = _settingsService.IsLogFolderValid;
+        var archiveStats = QuestLogArchiveService.Instance.CachedStats;
+        TxtQuestArchiveStatus.Text =
+            $"내부 백업: 총 {archiveStats.TotalEvents:N0}개 · PVE {archiveStats.PveEvents:N0} · " +
+            $"PVP {archiveStats.PvpEvents:N0} · 시즌 {archiveStats.SeasonalPvpEvents:N0}";
+
+        // Existing source logs are optional once this profile has archived events.
+        var currentProfileArchiveCount = QuestLogArchiveService.Instance.GetCachedEventCount(
+            ProfileService.Instance.CurrentProfile);
+        BtnSyncQuest.IsEnabled = _settingsService.IsLogFolderValid || currentProfileArchiveCount > 0;
+        BtnArchiveQuestLogs.IsEnabled = _settingsService.IsLogFolderValid;
         BtnToggleMonitoring.IsEnabled = _settingsService.IsLogFolderValid;
     }
 
@@ -1525,22 +1601,28 @@ public partial class MainWindow : Window
     /// </summary>
     private void BtnSyncQuest_Click(object sender, RoutedEventArgs e)
     {
-        var logPath = _settingsService.LogFolderPath;
-        if (string.IsNullOrEmpty(logPath) || !Directory.Exists(logPath))
+        var configuredLogPath = _settingsService.LogFolderPath;
+        var hasLogFolder = !string.IsNullOrWhiteSpace(configuredLogPath) && Directory.Exists(configuredLogPath);
+        var archivedEventCount = QuestLogArchiveService.Instance.GetCachedEventCount(
+            ProfileService.Instance.CurrentProfile);
+
+        if (!hasLogFolder && archivedEventCount == 0)
         {
             MessageBox.Show(
-                "로그 폴더가 설정되지 않았거나 존재하지 않습니다.",
-                "오류",
+                "현재 로그 폴더도 없고 이 캐릭터의 내부 백업 이벤트도 없습니다.",
+                "동기화 자료 없음",
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
             return;
         }
 
+        var logPath = hasLogFolder ? configuredLogPath! : string.Empty;
+
         // Hide settings overlay
         HideSettingsOverlay();
 
         // Show wipe warning if not hidden
-        if (!_settingsService.HideWipeWarning)
+        if (hasLogFolder && !_settingsService.HideWipeWarning)
         {
             if (!WipeWarningDialog.ShowWarning(logPath, this))
             {
@@ -1766,7 +1848,7 @@ public partial class MainWindow : Window
     /// <summary>
     /// Toggle log monitoring
     /// </summary>
-    private void BtnToggleMonitoring_Click(object sender, RoutedEventArgs e)
+    private async void BtnToggleMonitoring_Click(object sender, RoutedEventArgs e)
     {
         if (_logSyncService.IsMonitoring)
         {
@@ -1777,15 +1859,76 @@ public partial class MainWindow : Window
             var logPath = _settingsService.LogFolderPath;
             if (!string.IsNullOrEmpty(logPath) && Directory.Exists(logPath))
             {
-                _logSyncService.StartMonitoring(logPath);
+                try
+                {
+                    await _logSyncService.ArchiveExistingQuestLogsAsync(logPath);
 
-                // Subscribe to quest events
-                _logSyncService.QuestEventDetected -= OnQuestEventDetected;
-                _logSyncService.QuestEventDetected += OnQuestEventDetected;
+                    // Subscribe before starting so no live event is missed.
+                    _logSyncService.QuestEventDetected -= OnQuestEventDetected;
+                    _logSyncService.QuestEventDetected += OnQuestEventDetected;
+                    _logSyncService.StartMonitoring(logPath);
+                    await _logSyncService.ArchiveExistingQuestLogsAsync(logPath);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(
+                        $"로그 모니터링을 시작하지 못했습니다: {ex.Message}",
+                        "모니터링 오류",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Error);
+                }
             }
         }
 
         UpdateQuestSyncUI();
+    }
+
+    /// <summary>
+    /// Manually copy every quest event currently present in EFT logs into user_data.db.
+    /// Raw log lines are not retained.
+    /// </summary>
+    private async void BtnArchiveQuestLogs_Click(object sender, RoutedEventArgs e)
+    {
+        var logPath = _settingsService.LogFolderPath;
+        if (string.IsNullOrWhiteSpace(logPath) || !Directory.Exists(logPath))
+        {
+            MessageBox.Show(
+                "로그 폴더가 설정되지 않았거나 존재하지 않습니다.",
+                "내부 백업 불가",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        HideSettingsOverlay();
+        ShowLoadingOverlay("퀘스트 로그 내부 백업 중...");
+
+        try
+        {
+            var progress = new Progress<string>(UpdateLoadingStatus);
+            var result = await _logSyncService.ArchiveExistingQuestLogsAsync(logPath, progress);
+            HideLoadingOverlay();
+            UpdateQuestSyncUI();
+
+            MessageBox.Show(
+                $"내부 백업을 완료했습니다.\n\n" +
+                $"확인한 로그: {result.FilesFound:N0}개\n" +
+                $"새로 읽은 로그: {result.FilesScanned:N0}개\n" +
+                $"새 퀘스트 이벤트: {result.EventsAdded:N0}개\n\n" +
+                "이미 헬퍼가 읽은 퀘스트 기록은 원본 Tarkov 로그를 지워도 유지됩니다.",
+                "내부 백업 완료",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            HideLoadingOverlay();
+            MessageBox.Show(
+                $"내부 백업 중 오류가 발생했습니다: {ex.Message}",
+                "내부 백업 오류",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
     }
 
     /// <summary>

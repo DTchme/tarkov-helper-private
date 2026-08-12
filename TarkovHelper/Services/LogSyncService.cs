@@ -564,8 +564,35 @@ namespace TarkovHelper.Services
         {
             try
             {
+                var fileInfo = new FileInfo(filePath);
+                if (!fileInfo.Exists)
+                    return;
+
+                var fileLength = fileInfo.Length;
+                var lastWriteUtcTicks = fileInfo.LastWriteTimeUtc.Ticks;
+                if (await QuestLogArchiveService.Instance.IsFileCurrentAsync(
+                    filePath,
+                    fileLength,
+                    lastWriteUtcTicks))
+                {
+                    return;
+                }
+
                 // Read the last portion of the file to get recent events
                 var events = await ParseLogFileAsync(filePath, tailOnly: true);
+
+                try
+                {
+                    await QuestLogArchiveService.Instance.ArchiveFileEventsAsync(
+                        filePath,
+                        fileLength,
+                        lastWriteUtcTicks,
+                        events);
+                }
+                catch (Exception archiveEx)
+                {
+                    _log.Warning($"Live quest log archive failed: {archiveEx.Message}");
+                }
 
                 var currentProfile = ProfileService.Instance.CurrentProfile;
                 foreach (var evt in events)
@@ -590,6 +617,85 @@ namespace TarkovHelper.Services
         #endregion
 
         #region Log Parsing
+
+        /// <summary>
+        /// Copies quest events from changed EFT push-notification logs into the compact
+        /// persistent archive. Unchanged files are skipped using length and write-time metadata.
+        /// </summary>
+        public async Task<QuestLogFolderArchiveResult> ArchiveExistingQuestLogsAsync(
+            string? logFolderPath,
+            IProgress<string>? progress = null)
+        {
+            await QuestLogArchiveService.Instance.InitializeAsync();
+
+            if (string.IsNullOrWhiteSpace(logFolderPath) || !Directory.Exists(logFolderPath))
+            {
+                return new QuestLogFolderArchiveResult(0, 0, 0, 0, 0, 0, 0);
+            }
+
+            var logFiles = Directory.GetFiles(
+                    logFolderPath,
+                    "*push-notifications*.log",
+                    SearchOption.AllDirectories)
+                .OrderBy(File.GetLastWriteTimeUtc)
+                .ToList();
+
+            var filesScanned = 0;
+            var filesSkipped = 0;
+            var eventsFound = 0;
+            var eventsAdded = 0;
+            var duplicateEvents = 0;
+            var skippedUnknown = 0;
+
+            progress?.Report($"퀘스트 로그 내부 백업 확인 중 ({logFiles.Count}개 파일)");
+
+            foreach (var file in logFiles)
+            {
+                try
+                {
+                    var fileInfo = new FileInfo(file);
+                    var fileLength = fileInfo.Length;
+                    var lastWriteUtcTicks = fileInfo.LastWriteTimeUtc.Ticks;
+
+                    if (await QuestLogArchiveService.Instance.IsFileCurrentAsync(
+                        file,
+                        fileLength,
+                        lastWriteUtcTicks))
+                    {
+                        filesSkipped++;
+                        continue;
+                    }
+
+                    var events = await ParseLogFileAsync(file);
+                    var writeResult = await QuestLogArchiveService.Instance.ArchiveFileEventsAsync(
+                        file,
+                        fileLength,
+                        lastWriteUtcTicks,
+                        events);
+
+                    filesScanned++;
+                    eventsFound += events.Count;
+                    eventsAdded += writeResult.Added;
+                    duplicateEvents += writeResult.Duplicates;
+                    skippedUnknown += writeResult.SkippedUnknownProfile;
+                    progress?.Report(
+                        $"퀘스트 로그 내부 백업 중 ({filesScanned + filesSkipped}/{logFiles.Count}, 새 이벤트 {eventsAdded}개)");
+                }
+                catch (Exception ex)
+                {
+                    _log.Warning($"Failed to archive quest log file {file}: {ex.Message}");
+                }
+            }
+
+            return new QuestLogFolderArchiveResult(
+                logFiles.Count,
+                filesScanned,
+                filesSkipped,
+                eventsFound,
+                eventsAdded,
+                duplicateEvents,
+                skippedUnknown);
+        }
 
         /// <summary>
         /// Parse all log files in a directory for quest events
@@ -851,12 +957,20 @@ namespace TarkovHelper.Services
         {
             var result = new SyncResult();
 
-            _log.Info($"Starting sync from: {logFolderPath}");
-            progress?.Report("로그 파일 스캔 중...");
+            _log.Info($"Starting sync from logs and persistent archive: {logFolderPath}");
+            progress?.Report("현재 로그를 내부 백업과 병합하는 중...");
 
-            // Parse all log files
-            var events = await ParseLogDirectoryAsync(logFolderPath, progress);
-            _log.Info($"Found {events.Count} quest events in logs");
+            // First copy every changed source log into the compact archive. The restore path
+            // then reads the archive, so deleting the original EFT logs does not lose history.
+            var archiveResult = await ArchiveExistingQuestLogsAsync(logFolderPath, progress);
+            var events = await QuestLogArchiveService.Instance.LoadEventsAsync();
+            result.ArchivedEventsLoaded = events.Count;
+            result.NewEventsArchived = archiveResult.EventsAdded;
+            _log.Info(
+                $"Loaded {events.Count} archived quest events; added {archiveResult.EventsAdded} from current logs");
+
+            progress?.Report(
+                $"내부 백업 이벤트 {events.Count}개 분석 중 (이번에 {archiveResult.EventsAdded}개 추가)");
 
             result.DetectedLogProfiles = events
                 .Select(e => e.SourceProfile)

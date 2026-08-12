@@ -85,6 +85,16 @@ namespace TarkovHelper.Models
         public int TotalEventsFound { get; set; }
 
         /// <summary>
+        /// Events loaded from TarkovHelper's compact persistent archive.
+        /// </summary>
+        public int ArchivedEventsLoaded { get; set; }
+
+        /// <summary>
+        /// New events copied into the persistent archive during this scan.
+        /// </summary>
+        public int NewEventsArchived { get; set; }
+
+        /// <summary>
         /// Events ignored because they belonged to another profile or an unsupported seasonal profile.
         /// </summary>
         public int SkippedOtherProfileEvents { get; set; }
