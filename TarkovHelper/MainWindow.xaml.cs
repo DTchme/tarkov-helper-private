@@ -590,7 +590,6 @@ public partial class MainWindow : Window
             {
                 tasks = progressService.AllTasks.ToList();
                 _log.Debug($"Loaded {tasks.Count} quests from DB for {currentProfile}");
-                await ApplySafeActivePrerequisitesAsync(progressService, currentProfile);
             }
 
             // ObjectiveProgressService 비동기 로드
@@ -695,32 +694,6 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task ApplySafeActivePrerequisitesAsync(
-        QuestProgressService progressService,
-        ProfileType profileType)
-    {
-        try
-        {
-            var inferredPrerequisites = progressService
-                .GetSafeCompletedPrerequisitesForActiveQuests();
-            if (inferredPrerequisites.Count == 0)
-                return;
-
-            await UserDataDbService.Instance.CreateTimestampedBackupAsync(
-                $"active-prerequisites-{profileType}");
-            await progressService.ApplyQuestChangesBatchAsync(
-                inferredPrerequisites.Select(task => (task, QuestStatus.Done)),
-                applyAlternativeConsequences: false,
-                profileType: profileType,
-                preserveExistingExplicitState: true);
-            _log.Info($"Safely completed {inferredPrerequisites.Count} prerequisites for active quests");
-        }
-        catch (Exception inferenceEx)
-        {
-            _log.Warning($"Safe active prerequisite inference failed: {inferenceEx.Message}");
-        }
-    }
-
     /// <summary>
     /// 프로필 라디오 버튼 변경 핸들러
     /// </summary>
@@ -786,12 +759,6 @@ public partial class MainWindow : Window
             }
 
             _log.Info($"Data verification complete. Quests: {QuestProgressService.Instance.AllTasks.Count}, Retry: {retryCount}");
-
-            // This is the normal startup/profile-switch path. Apply the same conservative
-            // prerequisite recovery used by log restore and manual quest refresh.
-            await ApplySafeActivePrerequisitesAsync(
-                QuestProgressService.Instance,
-                currentProfile);
 
             // 4. 퀘스트 그래프 서비스 초기화 (의존성 추적 및 카파 게이지용)
             QuestGraphService.Instance.Initialize(QuestProgressService.Instance.AllTasks.ToList());
@@ -1842,8 +1809,8 @@ public partial class MainWindow : Window
                     _ => ""
                 };
 
-                // Apply the exact log state first. A Started event may then infer only mandatory
-                // completed prerequisites; ambiguous branches and alternative quests remain untouched.
+                // A push notification contains one exact quest state. Do not infer any other
+                // quest state from the dependency graph because EFT can change that graph.
                 QuestStatus? exactStatus = evt.EventType switch
                 {
                     QuestEventType.Completed => QuestStatus.Done,
@@ -1854,7 +1821,7 @@ public partial class MainWindow : Window
 
                 if (exactStatus.HasValue)
                 {
-                    _ = ApplyQuestEventAndInferPrerequisitesAsync(
+                    _ = ApplyExactQuestEventAsync(
                         progressService,
                         task,
                         exactStatus.Value);
@@ -1863,7 +1830,7 @@ public partial class MainWindow : Window
         });
     }
 
-    private async Task ApplyQuestEventAndInferPrerequisitesAsync(
+    private async Task ApplyExactQuestEventAsync(
         QuestProgressService progressService,
         TarkovTask task,
         QuestStatus status)
@@ -1875,22 +1842,6 @@ public partial class MainWindow : Window
                 new[] { (task, status) },
                 applyAlternativeConsequences: false,
                 profileType: profileType);
-
-            if (status == QuestStatus.Active)
-            {
-                var inferredPrerequisites = progressService
-                    .GetSafeCompletedPrerequisitesForActiveQuests();
-                if (inferredPrerequisites.Count > 0)
-                {
-                    await UserDataDbService.Instance.CreateTimestampedBackupAsync(
-                        $"active-prerequisites-{profileType}");
-                    await progressService.ApplyQuestChangesBatchAsync(
-                        inferredPrerequisites.Select(prerequisite => (prerequisite, QuestStatus.Done)),
-                        applyAlternativeConsequences: false,
-                        profileType: profileType,
-                        preserveExistingExplicitState: true);
-                }
-            }
         }
         catch (Exception ex)
         {
@@ -1990,27 +1941,13 @@ public partial class MainWindow : Window
             await progressService.ApplyQuestChangesBatchAsync(
                 result.SelectedQuests.Select(task => (task, QuestStatus.Active)),
                 applyAlternativeConsequences: false,
-                profileType: profileType);
-
-            var prerequisites = result.PrerequisitesToComplete
-                .Select(progressService.GetTask)
-                .Where(task => task != null)
-                .Cast<TarkovTask>()
-                .ToList();
-
-            if (prerequisites.Count > 0)
-            {
-                await progressService.ApplyQuestChangesBatchAsync(
-                    prerequisites.Select(task => (task, QuestStatus.Done)),
-                    applyAlternativeConsequences: false,
-                    profileType: profileType,
-                    preserveExistingExplicitState: true);
-            }
+                profileType: profileType,
+                allowTerminalActiveOverride: true);
 
             _questListPage?.RefreshDisplay();
 
             MessageBox.Show(
-                string.Format(_loc.QuestsAppliedSuccess, result.SelectedQuests.Count, prerequisites.Count),
+                string.Format(_loc.QuestsAppliedSuccess, result.SelectedQuests.Count, result.CorrectedTerminalCount),
                 "알림",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);

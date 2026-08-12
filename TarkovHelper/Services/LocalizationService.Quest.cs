@@ -14,13 +14,13 @@ public partial class LocalizationService
     public string SearchQuestsPlaceholder => "퀘스트 검색...";
     public string TraderFilter => "트레이더:";
     public string AllTraders => "전체";
-    public string PrerequisitesPreview => "선행 퀘스트 미리보기";
-    public string PrerequisitesDescription => "체크된 퀘스트의 필수 완료 선행 퀘스트만 표시됩니다.\nOR 분기·시작 조건·선택형 퀘스트는 자동 처리하지 않습니다.";
+    public string ActiveCorrectionPreview => "진행 중 교정 미리보기";
+    public string ActiveCorrectionDescription => "체크한 퀘스트만 현재 진행 중으로 저장합니다.\n완료/실패로 잘못 저장된 항목도 진행 중으로 교정하며, 체크하지 않은 기존 기록은 바꾸지 않습니다.";
     public string SelectedQuestsCount => "선택된 퀘스트: {0}개";
-    public string PrerequisitesToComplete => "자동 완료될 선행 퀘스트: {0}개";
+    public string CorrectedQuestsCount => "완료/실패에서 교정: {0}개";
     public string QuestDataNotLoaded => "퀘스트 데이터가 로드되지 않았습니다. 먼저 데이터를 새로고침 해주세요.";
     public string NoQuestsSelected => "선택된 퀘스트가 없습니다.";
-    public string QuestsAppliedSuccess => "{0}개의 퀘스트가 진행 중으로 설정되고, {1}개의 필수 선행 퀘스트가 완료 처리되었습니다.";
+    public string QuestsAppliedSuccess => "{0}개의 퀘스트를 현재 진행 중으로 저장했습니다. 그중 {1}개는 잘못된 완료/실패 상태에서 교정했습니다.";
 
     #endregion
 
