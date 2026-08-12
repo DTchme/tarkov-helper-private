@@ -472,10 +472,20 @@
                                                        Foreground="{StaticResource TextSecondaryBrush}"/>
                                         </StackPanel>
 
+                                        <TextBlock x:Name="TxtQuestArchiveStatus"
+                                                   Text="내부 백업: 확인 중..."
+                                                   FontSize="{DynamicResource FontSizeXSmall}"
+                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                   TextWrapping="Wrap"
+                                                   Margin="0,0,0,12"/>
+
                                         <WrapPanel Orientation="Horizontal" HorizontalAlignment="Left">
                                             <Button x:Name="BtnSyncQuest" Content="퀘스트 동기화"
                                                     Padding="12,8" Margin="0,0,8,8"
                                                     Click="BtnSyncQuest_Click"/>
+                                            <Button x:Name="BtnArchiveQuestLogs" Content="지금 내부 백업"
+                                                    Padding="12,8" Margin="0,0,8,8"
+                                                    Click="BtnArchiveQuestLogs_Click"/>
                                             <Button x:Name="BtnToggleMonitoring" Content="모니터링 시작"
                                                     Padding="12,8" Margin="0,0,0,8"
                                                     Click="BtnToggleMonitoring_Click"/>
