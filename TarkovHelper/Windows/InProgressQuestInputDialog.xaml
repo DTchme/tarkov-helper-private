@@ -111,6 +111,10 @@
                                                                FontSize="{DynamicResource FontSizeTiny}"
                                                                Foreground="{DynamicResource TextSecondaryBrush}"/>
                                                 </StackPanel>
+                                                <TextBlock Grid.Column="2" Text="{Binding CurrentStatusText}"
+                                                           FontSize="{DynamicResource FontSizeTiny}"
+                                                           Foreground="{DynamicResource AccentBrush}"
+                                                           VerticalAlignment="Center" Margin="8,0,0,0"/>
                                             </Grid>
                                         </Border>
                                     </DataTemplate>
@@ -120,7 +124,7 @@
                     </Grid>
                 </Border>
 
-                <!-- Right Panel: Prerequisites Preview -->
+                <!-- Right Panel: Active correction preview -->
                 <Border Grid.Column="2" Background="{DynamicResource BackgroundMediumBrush}"
                         CornerRadius="4">
                     <Grid>
@@ -133,21 +137,21 @@
                         <!-- Header -->
                         <Border Grid.Row="0" Background="{DynamicResource BackgroundLightBrush}"
                                 CornerRadius="4,4,0,0" Padding="12,8">
-                            <TextBlock x:Name="TxtPrerequisitesHeader" Text="선행 퀘스트 미리보기"
+                            <TextBlock x:Name="TxtCorrectionHeader" Text="진행 중 교정 미리보기"
                                        FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
                                        Foreground="{DynamicResource TextPrimaryBrush}"/>
                         </Border>
 
                         <!-- Description -->
-                        <TextBlock x:Name="TxtPrerequisitesDesc" Grid.Row="1"
-                                   Text="선택한 퀘스트의 필수 완료 선행 퀘스트만 표시됩니다.&#x0a;OR 분기·시작 조건·선택형 퀘스트는 자동 처리하지 않습니다."
+                        <TextBlock x:Name="TxtCorrectionDesc" Grid.Row="1"
+                                   Text="체크한 퀘스트만 현재 진행 중으로 저장합니다.&#x0a;완료/실패 상태도 교정하며, 체크하지 않은 기존 기록은 바꾸지 않습니다."
                                    FontSize="{DynamicResource FontSizeTiny}" Margin="12,8"
                                    Foreground="{DynamicResource TextSecondaryBrush}"
                                    TextWrapping="Wrap"/>
 
-                        <!-- Prerequisites List -->
+                        <!-- Selected quests -->
                         <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Margin="0,0,0,8">
-                            <ItemsControl x:Name="PrerequisitesList">
+                            <ItemsControl x:Name="CorrectionPreviewList">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
                                         <Border BorderThickness="0,0,0,1" BorderBrush="{DynamicResource BorderBrush}"
@@ -191,8 +195,8 @@
                                FontSize="{DynamicResource FontSizeXSmall}"
                                Foreground="{DynamicResource TextPrimaryBrush}"
                                Margin="0,0,24,0"/>
-                    <TextBlock x:Name="TxtPrerequisitesCount"
-                               Text="완료될 선행 퀘스트: 0"
+                    <TextBlock x:Name="TxtCorrectedQuestsCount"
+                               Text="완료/실패에서 교정: 0"
                                FontSize="{DynamicResource FontSizeXSmall}"
                                Foreground="{DynamicResource TextSecondaryBrush}"/>
                 </StackPanel>

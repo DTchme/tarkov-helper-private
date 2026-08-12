@@ -7,8 +7,8 @@ namespace TarkovHelper.Windows;
 
 /// <summary>
 /// Dialog for entering in-progress quests.
-/// Allows user to select quests they are currently working on,
-/// and auto-completes all prerequisites when applied.
+/// Selected quests are stored as authoritative Active states without inferring
+/// prerequisite completion from the dependency graph.
 /// </summary>
 public partial class InProgressQuestInputDialog : Window
 {
@@ -22,7 +22,7 @@ public partial class InProgressQuestInputDialog : Window
     private List<TarkovTrader>? _cachedTraders;
 
     /// <summary>
-    /// Result containing selected quests and prerequisites to complete.
+    /// Result containing selected quests to correct as Active.
     /// Null if cancelled.
     /// </summary>
     public InProgressQuestInputResult? Result { get; private set; }
@@ -36,7 +36,7 @@ public partial class InProgressQuestInputDialog : Window
     /// Show the dialog and return result.
     /// </summary>
     /// <param name="owner">Optional owner window for centering.</param>
-    /// <returns>Result containing selected quests and prerequisites, or null if cancelled.</returns>
+    /// <returns>Result containing selected quests, or null if cancelled.</returns>
     public static InProgressQuestInputResult? ShowDialog(Window? owner)
     {
         var dialog = new InProgressQuestInputDialog();
@@ -83,9 +83,7 @@ public partial class InProgressQuestInputDialog : Window
         // Update localized text
         UpdateLocalizedText();
 
-        // Clear prerequisites preview
-        PrerequisitesList.ItemsSource = null;
-        UpdateSummaryCounts();
+        UpdateCorrectionPreview();
 
         return true;
     }
@@ -106,14 +104,10 @@ public partial class InProgressQuestInputDialog : Window
 
         _allQuestItems = tasks
             .Where(t => !string.IsNullOrEmpty(t.NormalizedName))
-            .Where(t =>
-            {
-                var status = _progressService.GetStatus(t);
-                return status != QuestStatus.Done && status != QuestStatus.Failed;
-            })
             .Select(t =>
             {
                 var (displayName, subtitleName, showSubtitle) = GetLocalizedQuestNames(t);
+                var status = _progressService.GetStatus(t);
                 return new QuestSelectionItem
                 {
                     Quest = t,
@@ -121,6 +115,13 @@ public partial class InProgressQuestInputDialog : Window
                     SubtitleName = subtitleName,
                     SubtitleVisibility = showSubtitle ? Visibility.Visible : Visibility.Collapsed,
                     TraderName = GetLocalizedTraderName(t.Trader),
+                    CurrentStatusText = status switch
+                    {
+                        QuestStatus.Active => "현재 진행 중",
+                        QuestStatus.Done => "완료에서 교정 가능",
+                        QuestStatus.Failed => "실패에서 교정 가능",
+                        _ => string.Empty
+                    },
                     IsCompleted = false,
                     IsSelected = false
                 };
@@ -164,8 +165,8 @@ public partial class InProgressQuestInputDialog : Window
         TxtTitle.Text = _loc.InProgressQuestInputTitle;
         TxtQuestSelectionHeader.Text = _loc.QuestSelection;
         TxtTraderFilterLabel.Text = _loc.TraderFilter;
-        TxtPrerequisitesHeader.Text = _loc.PrerequisitesPreview;
-        TxtPrerequisitesDesc.Text = _loc.PrerequisitesDescription;
+        TxtCorrectionHeader.Text = _loc.ActiveCorrectionPreview;
+        TxtCorrectionDesc.Text = _loc.ActiveCorrectionDescription;
         BtnCancel.Content = _loc.Cancel;
         BtnApply.Content = _loc.Apply;
 
@@ -232,7 +233,7 @@ public partial class InProgressQuestInputDialog : Window
         QuestSelectionList.ItemsSource = _filteredQuestItems;
     }
 
-    private void UpdatePrerequisitePreview()
+    private void UpdateCorrectionPreview()
     {
         if (_allQuestItems == null) return;
 
@@ -241,42 +242,36 @@ public partial class InProgressQuestInputDialog : Window
             .Select(q => q.Quest)
             .ToList();
 
-        var allPrereqs = _progressService
-            .GetSafeCompletedPrerequisites(selectedQuests)
-            .Where(prerequisite => !string.IsNullOrEmpty(prerequisite.NormalizedName))
-            .Select(prerequisite => prerequisite.NormalizedName!)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-        var prereqItems = allPrereqs
-            .Select(name => _graphService.GetTask(name))
-            .Where(t => t != null)
+        var selectedItems = selectedQuests
             .Select(t =>
             {
-                var (displayName, subtitleName, showSubtitle) = GetLocalizedQuestNames(t!);
-                return new PrerequisitePreviewItem
+                var (displayName, subtitleName, showSubtitle) = GetLocalizedQuestNames(t);
+                return new ActiveQuestPreviewItem
                 {
-                    Quest = t!,
+                    Quest = t,
                     DisplayName = displayName,
                     SubtitleName = subtitleName,
                     SubtitleVisibility = showSubtitle ? Visibility.Visible : Visibility.Collapsed,
-                    TraderName = GetLocalizedTraderName(t!.Trader)
+                    TraderName = GetLocalizedTraderName(t.Trader)
                 };
             })
             .OrderBy(p => p.TraderName)
             .ThenBy(p => p.DisplayName)
             .ToList();
 
-        PrerequisitesList.ItemsSource = prereqItems;
+        CorrectionPreviewList.ItemsSource = selectedItems;
         UpdateSummaryCounts();
     }
 
     private void UpdateSummaryCounts()
     {
         var selectedCount = _allQuestItems?.Count(q => q.IsSelected) ?? 0;
-        var prereqCount = (PrerequisitesList.ItemsSource as IEnumerable<PrerequisitePreviewItem>)?.Count() ?? 0;
+        var correctedCount = _allQuestItems?
+            .Where(q => q.IsSelected)
+            .Count(q => _progressService.GetStatus(q.Quest) is QuestStatus.Done or QuestStatus.Failed) ?? 0;
 
         TxtSelectedQuestsCount.Text = string.Format(_loc.SelectedQuestsCount, selectedCount);
-        TxtPrerequisitesCount.Text = string.Format(_loc.PrerequisitesToComplete, prereqCount);
+        TxtCorrectedQuestsCount.Text = string.Format(_loc.CorrectedQuestsCount, correctedCount);
 
         BtnApply.IsEnabled = selectedCount > 0;
     }
@@ -288,16 +283,11 @@ public partial class InProgressQuestInputDialog : Window
             .Select(q => q.Quest)
             .ToList() ?? new List<TarkovTask>();
 
-        var prerequisitesToComplete = _progressService
-            .GetSafeCompletedPrerequisites(selectedQuests)
-            .Where(prerequisite => !string.IsNullOrEmpty(prerequisite.NormalizedName))
-            .Select(prerequisite => prerequisite.NormalizedName!)
-            .ToList();
-
         return new InProgressQuestInputResult
         {
             SelectedQuests = selectedQuests,
-            PrerequisitesToComplete = prerequisitesToComplete
+            CorrectedTerminalCount = selectedQuests.Count(task =>
+                _progressService.GetStatus(task) is QuestStatus.Done or QuestStatus.Failed)
         };
     }
 
@@ -326,7 +316,7 @@ public partial class InProgressQuestInputDialog : Window
 
     private void QuestSelection_CheckChanged(object sender, RoutedEventArgs e)
     {
-        UpdatePrerequisitePreview();
+        UpdateCorrectionPreview();
     }
 
     private void BtnClose_Click(object sender, RoutedEventArgs e)
@@ -371,7 +361,7 @@ public class InProgressQuestInputResult
     public List<TarkovTask> SelectedQuests { get; set; } = new();
 
     /// <summary>
-    /// Prerequisites that need to be completed.
+    /// Number of selected quests that override a stored Done or Failed state.
     /// </summary>
-    public List<string> PrerequisitesToComplete { get; set; } = new();
+    public int CorrectedTerminalCount { get; set; }
 }

@@ -16,6 +16,7 @@ public class QuestSelectionItem : INotifyPropertyChanged
     public string SubtitleName { get; set; } = string.Empty;
     public Visibility SubtitleVisibility { get; set; } = Visibility.Collapsed;
     public string TraderName { get; set; } = string.Empty;
+    public string CurrentStatusText { get; set; } = string.Empty;
     public bool IsCompleted { get; set; }
     public bool IsEnabled => !IsCompleted;
 
@@ -45,9 +46,9 @@ public class QuestSelectionItem : INotifyPropertyChanged
 }
 
 /// <summary>
-/// View model for prerequisite quest display
+/// View model for the selected active-quest correction preview
 /// </summary>
-public class PrerequisitePreviewItem
+public class ActiveQuestPreviewItem
 {
     public TarkovTask Quest { get; set; } = null!;
     public string DisplayName { get; set; } = string.Empty;

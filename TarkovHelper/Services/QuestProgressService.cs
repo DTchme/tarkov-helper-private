@@ -363,163 +363,6 @@ namespace TarkovHelper.Services
         }
 
         /// <summary>
-        /// Finds prerequisites that can safely be inferred as completed from explicitly Active quests.
-        /// Only mandatory Complete requirements are followed. Ambiguous OR branches, Start/Accept,
-        /// Fail, and mutually-exclusive quests are not invented.
-        /// </summary>
-        public IReadOnlyList<TarkovTask> GetSafeCompletedPrerequisitesForActiveQuests()
-        {
-            var activeQuests = _allTasks.Where(task =>
-                TryGetExplicitStatus(task, out var status) && status == QuestStatus.Active);
-
-            return GetSafeCompletedPrerequisites(activeQuests);
-        }
-
-        /// <summary>
-        /// Finds prerequisites that can safely be inferred as completed for the supplied root quests.
-        /// Current explicit states always win over inference.
-        /// </summary>
-        public IReadOnlyList<TarkovTask> GetSafeCompletedPrerequisites(IEnumerable<TarkovTask> rootQuests)
-        {
-            var roots = rootQuests.ToList();
-            var rootKeys = roots
-                .Select(task => task.Ids?.FirstOrDefault() ?? task.NormalizedName)
-                .Where(key => !string.IsNullOrEmpty(key))
-                .Cast<string>()
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
-            var inferred = new Dictionary<string, TarkovTask>(StringComparer.OrdinalIgnoreCase);
-            var expanded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-            foreach (var rootQuest in roots)
-            {
-                CollectSafeCompletedPrerequisites(rootQuest, inferred, expanded);
-            }
-
-            // A malformed/cyclic graph must never turn a selected or active root quest into Done.
-            foreach (var rootKey in rootKeys)
-            {
-                inferred.Remove(rootKey);
-            }
-
-            return inferred.Values
-                .OrderBy(task => task.Name, StringComparer.OrdinalIgnoreCase)
-                .ToList();
-        }
-
-        private void CollectSafeCompletedPrerequisites(
-            TarkovTask task,
-            Dictionary<string, TarkovTask> inferred,
-            HashSet<string> expanded)
-        {
-            var taskKey = task.Ids?.FirstOrDefault() ?? task.NormalizedName;
-            if (string.IsNullOrEmpty(taskKey) || !expanded.Add(taskKey))
-                return;
-
-            if (task.TaskRequirements != null && task.TaskRequirements.Count > 0)
-            {
-                foreach (var requirement in task.TaskRequirements.Where(req => req.GroupId == 0))
-                {
-                    if (RequiresCompletedStatus(requirement))
-                    {
-                        AddSafeCompletedRequirement(requirement, inferred, expanded);
-                    }
-                }
-
-                foreach (var group in task.TaskRequirements
-                    .Where(req => req.GroupId > 0)
-                    .GroupBy(req => req.GroupId))
-                {
-                    var groupRequirements = group.ToList();
-
-                    // An existing explicit completion identifies the chosen OR branch.
-                    foreach (var requirement in groupRequirements)
-                    {
-                        var requiredTask = ResolveRequiredTask(requirement);
-                        if (requiredTask != null &&
-                            TryGetExplicitStatus(requiredTask, out var status) &&
-                            status == QuestStatus.Done)
-                        {
-                            CollectSafeCompletedPrerequisites(requiredTask, inferred, expanded);
-                        }
-                    }
-
-                    // A one-item OR group is not ambiguous and can be handled like an AND condition.
-                    if (groupRequirements.Count == 1 && RequiresCompletedStatus(groupRequirements[0]))
-                    {
-                        AddSafeCompletedRequirement(groupRequirements[0], inferred, expanded);
-                    }
-                }
-
-                return;
-            }
-
-            // Legacy data has no typed requirement information; Previous historically means Complete.
-            if (task.Previous == null)
-                return;
-
-            foreach (var previousName in task.Previous)
-            {
-                var requiredTask = GetTask(previousName);
-                AddSafeCompletedTask(requiredTask, inferred, expanded);
-            }
-        }
-
-        private void AddSafeCompletedRequirement(
-            TaskRequirement requirement,
-            Dictionary<string, TarkovTask> inferred,
-            HashSet<string> expanded)
-        {
-            AddSafeCompletedTask(ResolveRequiredTask(requirement), inferred, expanded);
-        }
-
-        private void AddSafeCompletedTask(
-            TarkovTask? requiredTask,
-            Dictionary<string, TarkovTask> inferred,
-            HashSet<string> expanded)
-        {
-            if (requiredTask == null)
-                return;
-
-            if (TryGetExplicitStatus(requiredTask, out var explicitStatus))
-            {
-                if (explicitStatus == QuestStatus.Done)
-                {
-                    CollectSafeCompletedPrerequisites(requiredTask, inferred, expanded);
-                }
-                return;
-            }
-
-            // The helper cannot know which mutually-exclusive branch the player chose.
-            if (HasAlternativeQuests(requiredTask))
-                return;
-
-            var requiredKey = requiredTask.Ids?.FirstOrDefault() ?? requiredTask.NormalizedName;
-            if (string.IsNullOrEmpty(requiredKey))
-                return;
-
-            inferred.TryAdd(requiredKey, requiredTask);
-            CollectSafeCompletedPrerequisites(requiredTask, inferred, expanded);
-        }
-
-        private TarkovTask? ResolveRequiredTask(TaskRequirement requirement)
-        {
-            return !string.IsNullOrEmpty(requirement.TaskId)
-                ? GetTaskById(requirement.TaskId)
-                : GetTask(requirement.TaskNormalizedName);
-        }
-
-        private static bool RequiresCompletedStatus(TaskRequirement requirement)
-        {
-            if (requirement.Status == null || requirement.Status.Count == 0)
-                return true;
-
-            return requirement.Status.All(status =>
-                status.Equals("complete", StringComparison.OrdinalIgnoreCase) ||
-                status.Equals("completed", StringComparison.OrdinalIgnoreCase) ||
-                status.Equals("success", StringComparison.OrdinalIgnoreCase));
-        }
-
-        /// <summary>
         /// Check if player level meets quest requirement
         /// </summary>
         public bool IsLevelRequirementMet(TarkovTask task)
@@ -1028,7 +871,7 @@ namespace TarkovHelper.Services
             IEnumerable<(TarkovTask Task, QuestStatus Status)> changes,
             bool applyAlternativeConsequences = true,
             ProfileType? profileType = null,
-            bool preserveExistingExplicitState = false)
+            bool allowTerminalActiveOverride = false)
         {
             var changedItems = new List<(string Id, string? NormalizedName, QuestStatus Status)>();
             var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -1043,10 +886,6 @@ namespace TarkovHelper.Services
                 switch (status)
                 {
                     case QuestStatus.Done:
-                        // Inferred completions must never race with and overwrite an exact log/manual state.
-                        if (preserveExistingExplicitState && TryGetExplicitStatus(task, out _))
-                            break;
-
                         // Complete without recursive save
                         if (CompleteQuestBatchInternal(task, visited, changedItems))
                         {
@@ -1083,7 +922,8 @@ namespace TarkovHelper.Services
                     case QuestStatus.Active:
                         // A replayed Started notification must not downgrade an explicit terminal state.
                         if (TryGetExplicitStatus(task, out var activeStatus) &&
-                            activeStatus is QuestStatus.Done or QuestStatus.Failed)
+                            activeStatus is QuestStatus.Done or QuestStatus.Failed &&
+                            !allowTerminalActiveOverride)
                         {
                             break;
                         }
