@@ -2,6 +2,7 @@ using Microsoft.Data.Sqlite;
 using TarkovHelper.Debug;
 using TarkovHelper.Models;
 using TarkovHelper.Services;
+using TarkovHelper.Services.Map;
 
 var failures = new List<string>();
 
@@ -171,6 +172,98 @@ Run("archive keys isolate profile families", () =>
     Assert(
         QuestLogArchiveService.GetEventKey(pve) != QuestLogArchiveService.GetEventKey(pvp),
         "PVE and PVP events must not share an archive key");
+});
+
+Run("current EFT screenshot filenames expose coordinates", () =>
+{
+    var parser = new ScreenshotCoordinateParser();
+    var parsed = parser.TryParse(
+        "2026-08-13[19-57]_-169.17, 6.19, -475.66_0.08716, 0.80955, -0.12443, 0.56705_19.68 (0).png",
+        out var position);
+
+    Assert(parsed, "the current EFT screenshot filename format must be recognized");
+    Assert(position != null, "a recognized screenshot must return coordinates");
+    Assert(Math.Abs(position!.X - (-169.17)) < 0.001, "the screenshot X coordinate must be preserved");
+    Assert(Math.Abs(position.Y - 6.19) < 0.001, "the screenshot height coordinate must be preserved");
+    Assert(Math.Abs((position.Z ?? 0) - (-475.66)) < 0.001, "the screenshot Z coordinate must be preserved");
+    Assert(position.Angle.HasValue, "the screenshot quaternion must produce a facing angle");
+});
+
+Run("screenshot watcher emits a parsed position for a new EFT screenshot", () =>
+{
+    var tempRoot = Path.Combine(Path.GetTempPath(), "TarkovHelperScreenshotRegression", Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(tempRoot);
+
+    try
+    {
+        var detected = new TaskCompletionSource<TarkovHelper.Models.Map.EftPosition>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        using var watcher = new ScreenshotWatcherService(new ScreenshotCoordinateParser())
+        {
+            DebounceDelayMs = 50
+        };
+        watcher.PositionDetected += (_, args) => detected.TrySetResult(args.Position);
+
+        Assert(watcher.StartWatching(tempRoot), "the screenshot watcher must start for an existing folder");
+        var fileName = "2026-08-13[19-57]_-169.17, 6.19, -475.66_0.08716, 0.80955, -0.12443, 0.56705_19.68 (0).png";
+        File.WriteAllText(Path.Combine(tempRoot, fileName), "regression");
+
+        var position = detected.Task.WaitAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
+        Assert(Math.Abs(position.X - (-169.17)) < 0.001, "the watcher must emit the parsed X coordinate");
+        Assert(Math.Abs((position.Z ?? 0) - (-475.66)) < 0.001, "the watcher must emit the parsed Z coordinate");
+    }
+    finally
+    {
+        Directory.Delete(tempRoot, recursive: true);
+    }
+});
+
+Run("user database read and write connections use isolated caches", () =>
+{
+    var tempRoot = Path.Combine(Path.GetTempPath(), "TarkovHelperSqliteRegression", Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(tempRoot);
+    var databasePath = Path.Combine(tempRoot, "user_data.db");
+    var readOnly = new SqliteConnectionStringBuilder(
+        UserDataDbService.BuildApplicationConnectionString(databasePath, readOnly: true));
+    var writable = new SqliteConnectionStringBuilder(
+        UserDataDbService.BuildApplicationConnectionString(databasePath));
+
+    Assert(readOnly.Mode == SqliteOpenMode.ReadOnly, "read connections must remain read-only");
+    Assert(writable.Mode == SqliteOpenMode.ReadWriteCreate, "archive connections must remain writable");
+    Assert(readOnly.Cache == SqliteCacheMode.Private, "read connections must use a private cache");
+    Assert(writable.Cache == SqliteCacheMode.Private, "write connections must use a private cache");
+
+    try
+    {
+        using (var create = new SqliteConnection(writable.ConnectionString))
+        {
+            create.Open();
+            using var command = create.CreateCommand();
+            command.CommandText = "CREATE TABLE ArchiveProbe (Id INTEGER PRIMARY KEY)";
+            command.ExecuteNonQuery();
+        }
+
+        using (var read = new SqliteConnection(readOnly.ConnectionString))
+        {
+            read.Open();
+            using var command = read.CreateCommand();
+            command.CommandText = "SELECT COUNT(*) FROM ArchiveProbe";
+            _ = command.ExecuteScalar();
+        }
+
+        using (var write = new SqliteConnection(writable.ConnectionString))
+        {
+            write.Open();
+            using var command = write.CreateCommand();
+            command.CommandText = "INSERT INTO ArchiveProbe DEFAULT VALUES";
+            command.ExecuteNonQuery();
+        }
+    }
+    finally
+    {
+        SqliteConnection.ClearAllPools();
+        Directory.Delete(tempRoot, recursive: true);
+    }
 });
 
 if (failures.Count > 0)

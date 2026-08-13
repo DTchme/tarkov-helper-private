@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text.Json;
 using TarkovHelper.Models.Map;
+using TarkovHelper.Services.Logging;
 
 namespace TarkovHelper.Services.Map;
 
@@ -10,6 +11,7 @@ namespace TarkovHelper.Services.Map;
 /// </summary>
 public sealed class MapTrackerService : IDisposable
 {
+    private static readonly ILogger _log = Log.For<MapTrackerService>();
     private static MapTrackerService? _instance;
     public static MapTrackerService Instance => _instance ??= new MapTrackerService();
 
@@ -156,9 +158,12 @@ public sealed class MapTrackerService : IDisposable
     {
         if (_watcher.StartWatching(folderPath))
         {
+            _log.Info($"Screenshot tracking started: {folderPath}");
             OnStatusMessage($"스크린샷 감시 시작: {folderPath}");
             return true;
         }
+
+        _log.Warning($"Screenshot tracking could not start: {folderPath}");
         return false;
     }
 
@@ -313,6 +318,8 @@ public sealed class MapTrackerService : IDisposable
 
     private void OnPositionDetected(object? sender, PositionDetectedEventArgs e)
     {
+        _log.Debug($"Screenshot coordinates detected: {Path.GetFileName(e.FilePath)} X={e.Position.X:F2}, Y={e.Position.Y:F2}, Z={e.Position.Z:F2}");
+
         var mapKey = string.IsNullOrEmpty(e.Position.MapName) || e.Position.MapName == "Unknown"
             ? _currentMapKey
             : e.Position.MapName;
@@ -349,6 +356,7 @@ public sealed class MapTrackerService : IDisposable
             }
 
             OnStatusMessage($"위치 감지: X={position.X:F1}, Z={position.Z:F1}");
+            _log.Debug($"Player position transformed for map {mapKey}: X={screenPos.X:F1}, Y={screenPos.Y:F1}");
             PositionUpdated?.Invoke(this, screenPos);
         }
         else
@@ -359,6 +367,7 @@ public sealed class MapTrackerService : IDisposable
 
     private void OnParsingFailed(object? sender, ParsingFailedEventArgs e)
     {
+        _log.Warning($"Screenshot coordinate parsing failed: {e.FileName} - {e.Reason}");
         System.Diagnostics.Debug.WriteLine($"[LegacyMapTracker] 파싱 실패: {e.FileName} - {e.Reason}");
     }
 
@@ -374,6 +383,7 @@ public sealed class MapTrackerService : IDisposable
 
     private void OnError(string message)
     {
+        _log.Warning(message);
         ErrorOccurred?.Invoke(this, message);
     }
 

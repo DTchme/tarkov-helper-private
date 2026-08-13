@@ -1277,14 +1277,9 @@ namespace TarkovHelper.Services
             await _userDataDb.InitializeAsync();
 
             var result = new List<(string Id, string? NormalizedName, QuestStatus Status)>();
-            var connectionString = new SqliteConnectionStringBuilder
-            {
-                DataSource = _userDataDb.DatabasePath,
-                Mode = SqliteOpenMode.ReadOnly,
-                DefaultTimeout = 30,
-                Pooling = true,
-                Cache = SqliteCacheMode.Shared
-            }.ToString();
+            var connectionString = UserDataDbService.BuildApplicationConnectionString(
+                _userDataDb.DatabasePath,
+                readOnly: true);
 
             await using var connection = new SqliteConnection(connectionString);
             await connection.OpenAsync();

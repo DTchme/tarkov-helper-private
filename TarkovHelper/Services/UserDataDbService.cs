@@ -21,7 +21,23 @@ public sealed class UserDataDbService
     private static UserDataDbService? _instance;
     public static UserDataDbService Instance => _instance ??= new UserDataDbService();
 
-    private string GetConnectionString(bool readOnly = false) { var builder = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder { DataSource = _databasePath, Mode = readOnly ? Microsoft.Data.Sqlite.SqliteOpenMode.ReadOnly : Microsoft.Data.Sqlite.SqliteOpenMode.ReadWriteCreate, DefaultTimeout = 30, Pooling = true, Cache = Microsoft.Data.Sqlite.SqliteCacheMode.Shared }; return builder.ConnectionString; }
+    private string GetConnectionString(bool readOnly = false) =>
+        BuildApplicationConnectionString(_databasePath, readOnly);
+
+    internal static string BuildApplicationConnectionString(string databasePath, bool readOnly = false)
+    {
+        return new SqliteConnectionStringBuilder
+        {
+            DataSource = databasePath,
+            Mode = readOnly ? SqliteOpenMode.ReadOnly : SqliteOpenMode.ReadWriteCreate,
+            DefaultTimeout = 30,
+            Pooling = true,
+            // Read-only and writable callers must not join the same SQLite shared cache.
+            // A pooled read-only cache can otherwise make a later archive write fail with
+            // "attempt to write a readonly database".
+            Cache = SqliteCacheMode.Private
+        }.ConnectionString;
+    }
 
 
     private readonly string _databasePath;
