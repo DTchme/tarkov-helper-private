@@ -29,7 +29,6 @@ public sealed class DatabaseUpdateService : IDisposable
     private readonly string _versionFilePath;
     private readonly HttpClient _httpClient;
     private System.Threading.Timer _updateTimer;
-    private Task<UpdateCheckResult>? _currentUpdateTask;
     private bool _isUpdating;
     private bool _disposed;
 
@@ -165,7 +164,7 @@ public sealed class DatabaseUpdateService : IDisposable
             try
             {
                 var apiService = new QuestApiRefreshService(_httpClient);
-                apiRefresh = await apiService.RefreshAsync(ProfileType.Pvp, _databasePath);
+                apiRefresh = await apiService.RefreshAsync(profileType, _databasePath);
             }
             catch (TarkovDevUnavailableException ex)
             {

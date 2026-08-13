@@ -1,5 +1,7 @@
+using System.Collections.Concurrent;
 using System.IO;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using TarkovHelper.Models;
 using TarkovHelper.Services.Logging;
 
@@ -33,6 +35,7 @@ namespace TarkovHelper.Services
         private FileSystemWatcher? _logWatcher;
         private FileSystemWatcher? _applicationLogWatcher;
         private readonly object _watcherLock = new();
+        private readonly SemaphoreSlim _questLogScanLock = new(1, 1);
         private DateTime _lastEventTime = DateTime.MinValue;
         private DateTime _lastMapEventTime = DateTime.MinValue;
         private string? _lastModifiedFile;
@@ -40,6 +43,8 @@ namespace TarkovHelper.Services
         private bool _isWatching;
         private long _lastApplicationLogPosition;
         private string? _currentMapKey;
+        private readonly ConcurrentDictionary<string, CharacterProfileCacheEntry> _characterProfileCache =
+            new(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         /// Event fired when a quest event is detected from logs
@@ -70,6 +75,14 @@ namespace TarkovHelper.Services
         private const int MSG_TYPE_STARTED = 10;
         private const int MSG_TYPE_FAILED = 11;
         private const int MSG_TYPE_COMPLETED = 12;
+
+        private static readonly Regex SelectProfileRegex = new(
+            @"SelectProfile ProfileId:([a-f0-9]+) AccountId:(\d+)",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+        private static readonly Regex SessionModeRegex = new(
+            @"Session mode: (Pve|Pvp|Regular)",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         // Map name to key mapping (EFT log name -> map_configs.json key)
         // All keys are stored in lowercase for case-insensitive matching
@@ -562,32 +575,23 @@ namespace TarkovHelper.Services
 
         private async Task ProcessLatestLogEvents(string filePath)
         {
+            await _questLogScanLock.WaitAsync();
             try
             {
-                var fileInfo = new FileInfo(filePath);
-                if (!fileInfo.Exists)
+                var parsed = await ParseChangedLogFileAsync(filePath);
+                if (parsed.IsUnchanged)
                     return;
-
-                var fileLength = fileInfo.Length;
-                var lastWriteUtcTicks = fileInfo.LastWriteTimeUtc.Ticks;
-                if (await QuestLogArchiveService.Instance.IsFileCurrentAsync(
-                    filePath,
-                    fileLength,
-                    lastWriteUtcTicks))
-                {
-                    return;
-                }
-
-                // Read the last portion of the file to get recent events
-                var events = await ParseLogFileAsync(filePath, tailOnly: true);
 
                 try
                 {
                     await QuestLogArchiveService.Instance.ArchiveFileEventsAsync(
                         filePath,
-                        fileLength,
-                        lastWriteUtcTicks,
-                        events);
+                        parsed.FileLength,
+                        parsed.LastWriteUtcTicks,
+                        parsed.Events,
+                        parsed.LastReadOffset,
+                        parsed.LastSourceProfile,
+                        parsed.PendingText);
                 }
                 catch (Exception archiveEx)
                 {
@@ -595,7 +599,7 @@ namespace TarkovHelper.Services
                 }
 
                 var currentProfile = ProfileService.Instance.CurrentProfile;
-                foreach (var evt in events)
+                foreach (var evt in parsed.Events)
                 {
                     // Never route PvE / normal PvP / seasonal PvP events into the wrong profile.
                     if (!MatchesProfile(evt.SourceProfile, currentProfile))
@@ -611,6 +615,10 @@ namespace TarkovHelper.Services
             catch
             {
                 // Ignore errors during live monitoring
+            }
+            finally
+            {
+                _questLogScanLock.Release();
             }
         }
 
@@ -628,10 +636,14 @@ namespace TarkovHelper.Services
         {
             await QuestLogArchiveService.Instance.InitializeAsync();
 
-            if (string.IsNullOrWhiteSpace(logFolderPath) || !Directory.Exists(logFolderPath))
+            await _questLogScanLock.WaitAsync();
+            try
             {
-                return new QuestLogFolderArchiveResult(0, 0, 0, 0, 0, 0, 0);
-            }
+
+                if (string.IsNullOrWhiteSpace(logFolderPath) || !Directory.Exists(logFolderPath))
+                {
+                    return new QuestLogFolderArchiveResult(0, 0, 0, 0, 0, 0, 0);
+                }
 
             var logFiles = Directory.GetFiles(
                     logFolderPath,
@@ -653,28 +665,24 @@ namespace TarkovHelper.Services
             {
                 try
                 {
-                    var fileInfo = new FileInfo(file);
-                    var fileLength = fileInfo.Length;
-                    var lastWriteUtcTicks = fileInfo.LastWriteTimeUtc.Ticks;
-
-                    if (await QuestLogArchiveService.Instance.IsFileCurrentAsync(
-                        file,
-                        fileLength,
-                        lastWriteUtcTicks))
+                    var parsed = await ParseChangedLogFileAsync(file);
+                    if (parsed.IsUnchanged)
                     {
                         filesSkipped++;
                         continue;
                     }
 
-                    var events = await ParseLogFileAsync(file);
                     var writeResult = await QuestLogArchiveService.Instance.ArchiveFileEventsAsync(
                         file,
-                        fileLength,
-                        lastWriteUtcTicks,
-                        events);
+                        parsed.FileLength,
+                        parsed.LastWriteUtcTicks,
+                        parsed.Events,
+                        parsed.LastReadOffset,
+                        parsed.LastSourceProfile,
+                        parsed.PendingText);
 
                     filesScanned++;
-                    eventsFound += events.Count;
+                    eventsFound += parsed.Events.Count;
                     eventsAdded += writeResult.Added;
                     duplicateEvents += writeResult.Duplicates;
                     skippedUnknown += writeResult.SkippedUnknownProfile;
@@ -687,14 +695,136 @@ namespace TarkovHelper.Services
                 }
             }
 
-            return new QuestLogFolderArchiveResult(
-                logFiles.Count,
-                filesScanned,
-                filesSkipped,
-                eventsFound,
-                eventsAdded,
-                duplicateEvents,
-                skippedUnknown);
+                return new QuestLogFolderArchiveResult(
+                    logFiles.Count,
+                    filesScanned,
+                    filesSkipped,
+                    eventsFound,
+                    eventsAdded,
+                    duplicateEvents,
+                    skippedUnknown);
+            }
+            finally
+            {
+                _questLogScanLock.Release();
+            }
+        }
+
+        private async Task<QuestLogIncrementalParseResult> ParseChangedLogFileAsync(string filePath)
+        {
+            var fileInfo = new FileInfo(filePath);
+            if (!fileInfo.Exists)
+                return QuestLogIncrementalParseResult.Unchanged;
+
+            var checkpoint = await QuestLogArchiveService.Instance.GetFileCheckpointAsync(filePath);
+            if (checkpoint != null &&
+                checkpoint.FileLength == fileInfo.Length &&
+                checkpoint.LastWriteUtcTicks == fileInfo.LastWriteTimeUtc.Ticks)
+            {
+                return QuestLogIncrementalParseResult.Unchanged;
+            }
+
+            await using var stream = new FileStream(
+                filePath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete,
+                bufferSize: 64 * 1024,
+                useAsync: true);
+
+            var resetCursor = checkpoint == null ||
+                              checkpoint.LastReadOffset < 0 ||
+                              checkpoint.LastReadOffset > stream.Length;
+            var startOffset = resetCursor ? 0 : checkpoint!.LastReadOffset;
+            var initialProfile = resetCursor ? LogProfileKind.Unknown : checkpoint!.LastSourceProfile;
+            var pendingText = resetCursor ? string.Empty : checkpoint!.PendingText;
+
+            stream.Seek(startOffset, SeekOrigin.Begin);
+            using var reader = new StreamReader(stream, detectEncodingFromByteOrderMarks: true, leaveOpen: true);
+            var appendedText = await reader.ReadToEndAsync();
+            var lastReadOffset = stream.Position;
+            var combinedText = pendingText + appendedText;
+            var batch = ParseLogContentBatch(combinedText, Path.GetFileName(filePath), initialProfile);
+
+            var profileIds = await ResolveCharacterProfileIdsAsync(filePath);
+            foreach (var evt in batch.Events)
+            {
+                if (profileIds.TryGetValue(evt.SourceProfile, out var characterProfileId))
+                    evt.CharacterProfileId = characterProfileId;
+            }
+
+            fileInfo.Refresh();
+            return new QuestLogIncrementalParseResult(
+                false,
+                batch.Events,
+                lastReadOffset,
+                lastReadOffset,
+                fileInfo.LastWriteTimeUtc.Ticks,
+                batch.FinalSourceProfile,
+                batch.PendingText);
+        }
+
+        private async Task<IReadOnlyDictionary<LogProfileKind, string>> ResolveCharacterProfileIdsAsync(
+            string notificationLogPath)
+        {
+            var directory = Path.GetDirectoryName(notificationLogPath);
+            if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
+                return new Dictionary<LogProfileKind, string>();
+
+            var applicationLogs = Directory.GetFiles(directory, "application*.log", SearchOption.TopDirectoryOnly)
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            var cache = _characterProfileCache.GetOrAdd(directory, _ => new CharacterProfileCacheEntry());
+            var existingFiles = applicationLogs.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            foreach (var removedPath in cache.FileOffsets.Keys.Where(path => !existingFiles.Contains(path)).ToList())
+                cache.FileOffsets.Remove(removedPath);
+
+            foreach (var applicationLog in applicationLogs)
+            {
+                var fileInfo = new FileInfo(applicationLog);
+                var offset = cache.FileOffsets.GetValueOrDefault(applicationLog);
+                if (offset < 0 || offset > fileInfo.Length)
+                    offset = 0;
+
+                using var stream = new FileStream(
+                    applicationLog,
+                    FileMode.Open,
+                    FileAccess.Read,
+                    FileShare.ReadWrite | FileShare.Delete,
+                    bufferSize: 64 * 1024,
+                    useAsync: true);
+                stream.Seek(offset, SeekOrigin.Begin);
+                using var reader = new StreamReader(stream);
+
+                while (await reader.ReadLineAsync() is { } line)
+                {
+                    var selectMatch = SelectProfileRegex.Match(line);
+                    if (selectMatch.Success)
+                    {
+                        cache.SelectedProfileId = selectMatch.Groups[1].Value;
+                    }
+
+                    var sessionMatch = SessionModeRegex.Match(line);
+                    if (!sessionMatch.Success)
+                        continue;
+
+                    cache.CurrentProfileKind = sessionMatch.Groups[1].Value.ToLowerInvariant() switch
+                    {
+                        "pve" => LogProfileKind.Pve,
+                        "pvp" or "regular" => LogProfileKind.Pvp,
+                        _ => LogProfileKind.Unknown
+                    };
+                    if (cache.CurrentProfileKind != LogProfileKind.Unknown &&
+                        !string.IsNullOrEmpty(cache.SelectedProfileId))
+                    {
+                        cache.ProfileIds[cache.CurrentProfileKind] = cache.SelectedProfileId;
+                    }
+                }
+
+                cache.FileOffsets[applicationLog] = stream.Position;
+            }
+
+            return new Dictionary<LogProfileKind, string>(cache.ProfileIds);
         }
 
         /// <summary>
@@ -770,8 +900,14 @@ namespace TarkovHelper.Services
 
                 // Read entire content for multiline JSON parsing
                 var content = await reader.ReadToEndAsync();
-                var parsedEvents = ParseLogContent(content, fileName, sourceProfile);
-                events.AddRange(parsedEvents);
+                var parsed = ParseLogContentBatch(content, fileName, sourceProfile);
+                var profileIds = await ResolveCharacterProfileIdsAsync(filePath);
+                foreach (var evt in parsed.Events)
+                {
+                    if (profileIds.TryGetValue(evt.SourceProfile, out var characterProfileId))
+                        evt.CharacterProfileId = characterProfileId;
+                }
+                events.AddRange(parsed.Events);
             }
             catch
             {
@@ -784,7 +920,10 @@ namespace TarkovHelper.Services
         /// <summary>
         /// Parse log content with multiline JSON support
         /// </summary>
-        private List<QuestLogEvent> ParseLogContent(string content, string? sourceFile, LogProfileKind sourceProfile)
+        internal QuestLogParseBatch ParseLogContentBatch(
+            string content,
+            string? sourceFile,
+            LogProfileKind sourceProfile)
         {
             var events = new List<QuestLogEvent>();
 
@@ -842,7 +981,14 @@ namespace TarkovHelper.Services
                 }
             }
 
-            return events;
+            var pendingText = inJson ? jsonBuilder.ToString() : string.Empty;
+            if (pendingText.Length > 256 * 1024)
+            {
+                _log.Warning($"Discarded oversized incomplete quest notification block in {sourceFile}");
+                pendingText = string.Empty;
+            }
+
+            return new QuestLogParseBatch(events, currentSourceProfile, pendingText);
         }
 
         /// <summary>
@@ -963,7 +1109,8 @@ namespace TarkovHelper.Services
             // First copy every changed source log into the compact archive. The restore path
             // then reads the archive, so deleting the original EFT logs does not lose history.
             var archiveResult = await ArchiveExistingQuestLogsAsync(logFolderPath, progress);
-            var events = await QuestLogArchiveService.Instance.LoadEventsAsync();
+            var currentProfile = ProfileService.Instance.CurrentProfile;
+            var events = await QuestLogArchiveService.Instance.LoadEventsAsync(currentProfile);
             result.ArchivedEventsLoaded = events.Count;
             result.NewEventsArchived = archiveResult.EventsAdded;
             _log.Info(
@@ -978,7 +1125,6 @@ namespace TarkovHelper.Services
                 .OrderBy(p => p)
                 .ToList();
 
-            var currentProfile = ProfileService.Instance.CurrentProfile;
             var allProfileEventCount = events.Count;
             events = events.Where(e => MatchesProfile(e.SourceProfile, currentProfile)).ToList();
             result.SkippedOtherProfileEvents = allProfileEventCount - events.Count;
@@ -1393,6 +1539,38 @@ namespace TarkovHelper.Services
 
             names.Sort(StringComparer.OrdinalIgnoreCase);
             return string.Join("|", names);
+        }
+
+        private sealed class CharacterProfileCacheEntry
+        {
+            public Dictionary<string, long> FileOffsets { get; } = new(StringComparer.OrdinalIgnoreCase);
+            public Dictionary<LogProfileKind, string> ProfileIds { get; } = new();
+            public string? SelectedProfileId { get; set; }
+            public LogProfileKind CurrentProfileKind { get; set; } = LogProfileKind.Unknown;
+        }
+
+        internal sealed record QuestLogParseBatch(
+            List<QuestLogEvent> Events,
+            LogProfileKind FinalSourceProfile,
+            string PendingText);
+
+        private sealed record QuestLogIncrementalParseResult(
+            bool IsUnchanged,
+            List<QuestLogEvent> Events,
+            long LastReadOffset,
+            long FileLength,
+            long LastWriteUtcTicks,
+            LogProfileKind LastSourceProfile,
+            string PendingText)
+        {
+            public static QuestLogIncrementalParseResult Unchanged { get; } = new(
+                true,
+                new List<QuestLogEvent>(),
+                0,
+                0,
+                0,
+                LogProfileKind.Unknown,
+                string.Empty);
         }
 
         #endregion
