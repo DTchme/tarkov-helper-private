@@ -323,6 +323,10 @@ public partial class MapPage : UserControl
             // 리팩터링된 컴포넌트 초기화
             InitializeComponents();
 
+            // Unloaded에서 해제한 위치/상태 이벤트를 페이지가 다시 표시될 때 복구합니다.
+            // 이 구독이 없으면 스크린샷 감시는 동작해도 감지된 위치가 지도 UI에 전달되지 않습니다.
+            SubscribePageEvents();
+
             PopulateMapComboBox();
 
             // 레이드 이벤트 모니터링 시작 (자동 맵 전환 및 레이드 감지용)
@@ -600,6 +604,10 @@ public partial class MapPage : UserControl
                 Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments) + "\\Escape from Tarkov\\Screenshots";
         }
         TxtScreenshotFolder.Text = screenshotPath;
+        if (_trackerService != null && Directory.Exists(screenshotPath))
+        {
+            _trackerService.ChangeScreenshotFolder(screenshotPath);
+        }
 
         // 마커 크기 설정
         SliderMarkerSize.Value = settingsService.MapQuestMarkerSize;
@@ -856,6 +864,10 @@ public partial class MapPage : UserControl
     private void StartAutoTracking()
     {
         if (_trackerService == null) return;
+
+        // 추적을 시작할 때마다 UI 수신 연결이 살아 있다는 것을 보장합니다.
+        // Loaded/Unloaded가 반복되거나 수동 시작 버튼을 사용해도 위치 이벤트를 놓치지 않습니다.
+        SubscribePageEvents();
 
         // 이미 감시 중이면 스킵
         if (_trackerService.IsWatching) return;
@@ -1140,7 +1152,7 @@ public partial class MapPage : UserControl
         }
         else
         {
-            _trackerService.StartTracking();
+            StartAutoTracking();
         }
     }
 

@@ -30,14 +30,8 @@ public sealed class QuestLogArchiveService
 
     private string GetConnectionString()
     {
-        return new SqliteConnectionStringBuilder
-        {
-            DataSource = UserDataDbService.Instance.DatabasePath,
-            Mode = SqliteOpenMode.ReadWriteCreate,
-            DefaultTimeout = 30,
-            Pooling = true,
-            Cache = SqliteCacheMode.Shared
-        }.ConnectionString;
+        return UserDataDbService.BuildApplicationConnectionString(
+            UserDataDbService.Instance.DatabasePath);
     }
 
     public async Task InitializeAsync()
