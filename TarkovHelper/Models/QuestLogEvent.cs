@@ -72,6 +72,18 @@ namespace TarkovHelper.Models
         /// Profile/server family detected from the source log file.
         /// </summary>
         public LogProfileKind SourceProfile { get; set; } = LogProfileKind.Unknown;
+
+        /// <summary>
+        /// EFT PMC profile identifier associated with this character when it can be
+        /// resolved from the application log next to the notification log.
+        /// </summary>
+        public string? CharacterProfileId { get; set; }
+
+        /// <summary>
+        /// Internal archive generation. This keeps events from an old wipe from being
+        /// replayed into a newly created character with the same profile family.
+        /// </summary>
+        public string? ArchiveGenerationId { get; set; }
     }
 
     /// <summary>

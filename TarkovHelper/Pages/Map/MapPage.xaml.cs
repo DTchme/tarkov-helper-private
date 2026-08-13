@@ -111,6 +111,9 @@ public partial class MapPage : UserControl
     private Point _lastRightClickPosition;
     private CancellationTokenSource? _loadingCts;
     private bool _isInitializing;
+    private bool _componentsInitialized;
+    private bool _pageEventsSubscribed;
+    private bool _runtimeEventsSubscribed;
 
     public MapPage()
     {
@@ -119,15 +122,6 @@ public partial class MapPage : UserControl
             InitializeComponent();
 
             _trackerService = MapTrackerService.Instance;
-
-            // 이벤트 연결
-            _trackerService.PositionUpdated += OnPositionUpdated;
-            _trackerService.ErrorOccurred += OnErrorOccurred;
-            _trackerService.StatusMessage += OnStatusMessage;
-            _trackerService.WatchingStateChanged += OnWatchingStateChanged;
-            _loc.LanguageChanged += OnLanguageChanged;
-            MapMarkerDbService.Instance.DataRefreshed += OnDatabaseRefreshed;
-            QuestObjectiveDbService.Instance.DataRefreshed += OnDatabaseRefreshed;
 
             Loaded += MapTrackerPage_Loaded;
             Unloaded += MapTrackerPage_Unloaded;
@@ -156,7 +150,7 @@ public partial class MapPage : UserControl
     /// </summary>
     private void InitializeComponents()
     {
-        if (_trackerService == null) return;
+        if (_trackerService == null || _componentsInitialized) return;
 
         // MapQuestMarkerManager 초기화
         _questMarkerManager = new MapQuestMarkerManager(
@@ -202,6 +196,61 @@ public partial class MapPage : UserControl
         
         // 마커 목록 바인딩
         LstCustomMarkers.ItemsSource = _customMarkerManager.Markers;
+        _componentsInitialized = true;
+    }
+
+    private void SubscribePageEvents()
+    {
+        if (_pageEventsSubscribed || _trackerService == null)
+            return;
+
+        _trackerService.PositionUpdated += OnPositionUpdated;
+        _trackerService.ErrorOccurred += OnErrorOccurred;
+        _trackerService.StatusMessage += OnStatusMessage;
+        _trackerService.WatchingStateChanged += OnWatchingStateChanged;
+        _loc.LanguageChanged += OnLanguageChanged;
+        MapMarkerDbService.Instance.DataRefreshed += OnDatabaseRefreshed;
+        QuestObjectiveDbService.Instance.DataRefreshed += OnDatabaseRefreshed;
+        _pageEventsSubscribed = true;
+    }
+
+    private void UnsubscribePageEvents()
+    {
+        if (!_pageEventsSubscribed || _trackerService == null)
+            return;
+
+        _trackerService.PositionUpdated -= OnPositionUpdated;
+        _trackerService.ErrorOccurred -= OnErrorOccurred;
+        _trackerService.StatusMessage -= OnStatusMessage;
+        _trackerService.WatchingStateChanged -= OnWatchingStateChanged;
+        _loc.LanguageChanged -= OnLanguageChanged;
+        MapMarkerDbService.Instance.DataRefreshed -= OnDatabaseRefreshed;
+        QuestObjectiveDbService.Instance.DataRefreshed -= OnDatabaseRefreshed;
+        _pageEventsSubscribed = false;
+    }
+
+    private void SubscribeRuntimeEvents()
+    {
+        if (_runtimeEventsSubscribed)
+            return;
+
+        _progressService.ProgressChanged += OnQuestProgressChanged;
+        ObjectiveProgressService.Instance.ObjectiveProgressChanged += OnObjectiveProgressChanged;
+        GlobalKeyboardHookService.Instance.FloorKeyPressed += OnFloorKeyPressed;
+        _overlayService.OverlayVisibilityChanged += OnOverlayVisibilityChanged;
+        _runtimeEventsSubscribed = true;
+    }
+
+    private void UnsubscribeRuntimeEvents()
+    {
+        if (!_runtimeEventsSubscribed)
+            return;
+
+        _progressService.ProgressChanged -= OnQuestProgressChanged;
+        ObjectiveProgressService.Instance.ObjectiveProgressChanged -= OnObjectiveProgressChanged;
+        GlobalKeyboardHookService.Instance.FloorKeyPressed -= OnFloorKeyPressed;
+        _overlayService.OverlayVisibilityChanged -= OnOverlayVisibilityChanged;
+        _runtimeEventsSubscribed = false;
     }
 
     private void UpdateCustomMarkersParam()
@@ -229,6 +278,8 @@ public partial class MapPage : UserControl
     {
         try
         {
+            SubscribePageEvents();
+
             var ct = GetNewCancellationToken();
             await RefreshExtractMarkers(ct);
         }
@@ -303,19 +354,15 @@ public partial class MapPage : UserControl
             // Drawer 기본 열기 및 내용 새로고침
             OpenQuestDrawer();
 
-            // 퀘스트 진행 상태 변경 이벤트 구독
-            _progressService.ProgressChanged += OnQuestProgressChanged;
-            ObjectiveProgressService.Instance.ObjectiveProgressChanged += OnObjectiveProgressChanged;
+            // 페이지가 실제로 표시되는 동안에만 외부 서비스 이벤트를 구독합니다.
+            SubscribeRuntimeEvents();
 
             // Global Keyboard Hook 시작 (NumPad 키로 층 변경)
-            GlobalKeyboardHookService.Instance.FloorKeyPressed += OnFloorKeyPressed;
             GlobalKeyboardHookService.Instance.IsEnabled = true;
 
             // 오버레이 미니맵 서비스 초기화
             await InitializeOverlayServiceAsync().WaitAsync(ct);
 
-            // 오버레이 가시성 변경 이벤트 구독
-            _overlayService.OverlayVisibilityChanged += OnOverlayVisibilityChanged;
             UpdateMinimapButtonState(_overlayService.IsOverlayVisible);
 
             // 자동 Tracking 시작 (Map 탭 활성화 시)
@@ -351,17 +398,11 @@ public partial class MapPage : UserControl
         SaveMapState();
 
         // 이벤트 구독 해제
-        _progressService.ProgressChanged -= OnQuestProgressChanged;
-        ObjectiveProgressService.Instance.ObjectiveProgressChanged -= OnObjectiveProgressChanged;
-        MapMarkerDbService.Instance.DataRefreshed -= OnDatabaseRefreshed;
-        QuestObjectiveDbService.Instance.DataRefreshed -= OnDatabaseRefreshed;
+        UnsubscribeRuntimeEvents();
+        UnsubscribePageEvents();
 
         // Global Keyboard Hook 중지
-        GlobalKeyboardHookService.Instance.FloorKeyPressed -= OnFloorKeyPressed;
         GlobalKeyboardHookService.Instance.IsEnabled = false;
-
-        // 오버레이 가시성 변경 이벤트 구독 해제
-        _overlayService.OverlayVisibilityChanged -= OnOverlayVisibilityChanged;
 
         // 오버레이 숨기기 (Map 탭 이탈 시)
         _overlayService.HideOverlay();
@@ -949,7 +990,7 @@ public partial class MapPage : UserControl
     /// PMC: PMC Extracts + Shared 표시, SCAV Extracts 숨김
     /// SCAV: SCAV Extracts 표시, PMC Extracts 숨김 (Shared는 PMC 설정을 따름)
     /// </summary>
-    private void ApplyRaidTypeExtracts(RaidType raidType)
+    private async void ApplyRaidTypeExtracts(RaidType raidType)
     {
         bool showPmc, showScav;
 
@@ -996,7 +1037,15 @@ public partial class MapPage : UserControl
         }
 
         // 마커 새로고침
-        RefreshExtractMarkers();
+        try
+        {
+            await RefreshExtractMarkers(GetNewCancellationToken());
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            _log.Warning($"Failed to refresh extract markers for raid type: {ex.Message}");
+        }
     }
 
     /// <summary>
@@ -1441,7 +1490,7 @@ public partial class MapPage : UserControl
         }
     }
 
-    private void CmbQuestMarkerStyle_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private async void CmbQuestMarkerStyle_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (CmbQuestMarkerStyle.SelectedIndex < 0) return;
 
@@ -1451,7 +1500,11 @@ public partial class MapPage : UserControl
         SettingsService.Instance.MapQuestMarkerStyle = (int)_questMarkerStyle;
 
         // 마커 다시 그리기
-        RefreshQuestMarkers();
+        try
+        {
+            await RefreshQuestMarkers(GetNewCancellationToken());
+        }
+        catch (OperationCanceledException) { }
     }
 
     private void SliderMarkerOpacity_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -1465,7 +1518,7 @@ public partial class MapPage : UserControl
         _customMarkerManager?.UpdateMarkerDisplay();
     }
 
-    private void SliderQuestNameTextSize_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    private async void SliderQuestNameTextSize_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (TxtQuestNameTextSize != null)
         {
@@ -1477,7 +1530,11 @@ public partial class MapPage : UserControl
             SettingsService.Instance.MapQuestNameSize = size;
 
             // 마커 다시 그리기
-            RefreshQuestMarkers();
+            try
+            {
+                await RefreshQuestMarkers(GetNewCancellationToken());
+            }
+            catch (OperationCanceledException) { }
         }
     }
 

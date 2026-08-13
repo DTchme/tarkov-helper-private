@@ -40,6 +40,9 @@ public partial class MainWindow : Window
         Interval = TimeSpan.FromMinutes(5)
     };
     private bool _isQuestLogArchiveRunning;
+    private readonly SemaphoreSlim _questLogMaintenanceGate = new(1, 1);
+    private readonly SemaphoreSlim _profileRefreshGate = new(1, 1);
+    private CancellationTokenSource? _profileRefreshCts;
 
     // Windows API for dark title bar
     [DllImport("dwmapi.dll", PreserveSig = true)]
@@ -62,7 +65,12 @@ public partial class MainWindow : Window
         ProfileService.Instance.ProfileChanged += OnProfileChanged;
 
         _questLogArchiveTimer.Tick += QuestLogArchiveTimer_Tick;
-        Closed += (_, _) => _questLogArchiveTimer.Stop();
+        Closed += (_, _) =>
+        {
+            _questLogArchiveTimer.Stop();
+            _profileRefreshCts?.Cancel();
+            _profileRefreshCts?.Dispose();
+        };
 
         // Apply dark title bar
         SourceInitialized += (s, e) => EnableDarkTitleBar();
@@ -144,7 +152,7 @@ public partial class MainWindow : Window
         OnProfileChanged(this, currentProfile);
 
         // RefreshCurrentProfileDataAsync 호출로 모든 페이지 객체 생성 및 데이터 로드 실천
-        await RefreshCurrentProfileDataAsync();
+        await RefreshCurrentProfileDataAsync(currentProfile);
 
         // 4. 기타 백그라운드 서비스 시작
         InitializeFontSettings();
@@ -523,6 +531,9 @@ public partial class MainWindow : Window
         if (string.IsNullOrWhiteSpace(logPath) || !Directory.Exists(logPath))
             return;
 
+        if (!await _questLogMaintenanceGate.WaitAsync(0))
+            return;
+
         _isQuestLogArchiveRunning = true;
         try
         {
@@ -536,6 +547,7 @@ public partial class MainWindow : Window
         finally
         {
             _isQuestLogArchiveRunning = false;
+            _questLogMaintenanceGate.Release();
         }
     }
 
@@ -771,61 +783,83 @@ public partial class MainWindow : Window
                 ? ProfileType.SeasonalPvp
                 : ProfileType.Pvp;
         
-        if (ProfileService.Instance.CurrentProfile != newProfile)
+        var refreshCts = new CancellationTokenSource();
+        var previousCts = Interlocked.Exchange(ref _profileRefreshCts, refreshCts);
+        previousCts?.Cancel();
+        previousCts?.Dispose();
+
+        try
         {
-            ProfileService.Instance.CurrentProfile = newProfile;
-            await RefreshCurrentProfileDataAsync();
+            await RefreshCurrentProfileDataAsync(newProfile, refreshCts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            // A newer profile selection superseded this one.
         }
     }
 
     /// <summary>
     /// 현재 프로필 데이터를 기반으로 모든 서비스 및 UI 새로고침
     /// </summary>
-    private async Task RefreshCurrentProfileDataAsync()
+    private async Task RefreshCurrentProfileDataAsync(
+        ProfileType requestedProfile,
+        CancellationToken cancellationToken = default)
     {
-        ShowLoadingOverlay($"{ProfileService.Instance.GetProfileName(ProfileService.Instance.CurrentProfile)} 데이터 로드 중...");
+        await _profileRefreshGate.WaitAsync(cancellationToken);
+        var loadingShown = false;
 
         try
         {
-            var currentProfile = ProfileService.Instance.CurrentProfile;
-            
+            cancellationToken.ThrowIfCancellationRequested();
+            ProfileService.Instance.CurrentProfile = requestedProfile;
+            var currentProfile = requestedProfile;
+            ShowLoadingOverlay($"{ProfileService.Instance.GetProfileName(currentProfile)} 데이터 로드 중...");
+            loadingShown = true;
+
             // 1. 서비스들을 물리적으로 리셋
             QuestProgressService.ResetInstance();
             ItemInventoryService.ResetInstance();
             HideoutProgressService.ResetInstance();
 
+            var questProgressService = QuestProgressService.Instance;
+            var itemInventoryService = ItemInventoryService.Instance;
+            var hideoutProgressService = HideoutProgressService.Instance;
+
             // 2. 백엔드 서비스 리셋 및 데이터 다시 로드
             _settingsService.ReloadSettings();
-            await QuestProgressService.Instance.InitializeFromDbAsync(currentProfile);
-            
+            await questProgressService.InitializeFromDbAsync(currentProfile);
+            cancellationToken.ThrowIfCancellationRequested();
+
             // [중요] 은신처 데이터 DB로부터 명시적 로드 및 주입
             await HideoutDbService.Instance.LoadStationsAsync();
-            await HideoutProgressService.Instance.InitializeAsync(HideoutDbService.Instance.AllStations.ToList());
+            await hideoutProgressService.InitializeAsync(HideoutDbService.Instance.AllStations.ToList());
 
-            await HideoutProgressService.Instance.ReloadProgressAsync();
-            await ItemInventoryService.Instance.InitializeAsync();
+            await hideoutProgressService.ReloadProgressAsync();
+            await itemInventoryService.InitializeAsync();
+            cancellationToken.ThrowIfCancellationRequested();
 
             // 3. [핵심] 데이터 무결성 검증 루프 (최대 3초)
             // 퀘스트와 은신처 데이터가 모두 채워질 때까지 기다려 화이트아웃 방지
             int retryCount = 0;
-            while ((QuestProgressService.Instance.AllTasks.Count == 0 || 
-                    HideoutProgressService.Instance.AllModules.Count == 0) && retryCount < 30)
+            while ((questProgressService.AllTasks.Count == 0 ||
+                    hideoutProgressService.AllModules.Count == 0) && retryCount < 30)
             {
-                await Task.Delay(100);
+                await Task.Delay(100, cancellationToken);
                 retryCount++;
                 // 1초마다 재시도 강제 호출
                 {
-                    await QuestProgressService.Instance.InitializeFromDbAsync(currentProfile);
+                    await questProgressService.InitializeFromDbAsync(currentProfile);
                     await HideoutDbService.Instance.LoadStationsAsync();
-                    await HideoutProgressService.Instance.InitializeAsync(HideoutDbService.Instance.AllStations.ToList());
-                    await HideoutProgressService.Instance.ReloadProgressAsync();
+                    await hideoutProgressService.InitializeAsync(HideoutDbService.Instance.AllStations.ToList());
+                    await hideoutProgressService.ReloadProgressAsync();
                 }
             }
 
-            _log.Info($"Data verification complete. Quests: {QuestProgressService.Instance.AllTasks.Count}, Retry: {retryCount}");
+            cancellationToken.ThrowIfCancellationRequested();
+            _log.Info($"Data verification complete. Quests: {questProgressService.AllTasks.Count}, Retry: {retryCount}");
 
             // 4. 퀘스트 그래프 서비스 초기화 (의존성 추적 및 카파 게이지용)
-            QuestGraphService.Instance.Initialize(QuestProgressService.Instance.AllTasks.ToList());
+            QuestGraphService.Instance.Initialize(questProgressService.AllTasks.ToList());
 
             // 5. UI 페이지 인스턴스를 완전히 새로 생성 (UI 잔상 박멸 핵심)
             _questListPage = new QuestListPage();
@@ -833,7 +867,7 @@ public partial class MainWindow : Window
             _collectorPage = new CollectorPage();
             
             // 은신처 모듈 데이터가 있을 때만 페이지 생성
-            var hideoutModules = HideoutProgressService.Instance.AllModules;
+            var hideoutModules = hideoutProgressService.AllModules;
             _hideoutPage = (hideoutModules != null && hideoutModules.Count > 0) ? new HideoutPage() : null;
             _mapTrackerPage = new MapPage();
 
@@ -853,13 +887,19 @@ public partial class MainWindow : Window
             TabContentArea.Visibility = Visibility.Visible;
             TxtWelcome.Visibility = Visibility.Collapsed;
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             _log.Error($"Profile refresh failed: {ex.Message}");
         }
         finally
         {
-            HideLoadingOverlay();
+            if (loadingShown)
+                HideLoadingOverlay();
+            _profileRefreshGate.Release();
         }
     }
 
@@ -1586,7 +1626,10 @@ public partial class MainWindow : Window
         var archiveStats = QuestLogArchiveService.Instance.CachedStats;
         TxtQuestArchiveStatus.Text =
             $"내부 백업: 총 {archiveStats.TotalEvents:N0}개 · PVE {archiveStats.PveEvents:N0} · " +
-            $"PVP {archiveStats.PvpEvents:N0} · 시즌 {archiveStats.SeasonalPvpEvents:N0}";
+            $"PVP {archiveStats.PvpEvents:N0} · 시즌 {archiveStats.SeasonalPvpEvents:N0}" +
+            (archiveStats.InactiveGenerations > 0
+                ? $" · 보관된 이전 와이프 {archiveStats.InactiveGenerations:N0}개"
+                : string.Empty);
 
         // Existing source logs are optional once this profile has archived events.
         var currentProfileArchiveCount = QuestLogArchiveService.Instance.GetCachedEventCount(
@@ -1594,6 +1637,79 @@ public partial class MainWindow : Window
         BtnSyncQuest.IsEnabled = _settingsService.IsLogFolderValid || currentProfileArchiveCount > 0;
         BtnArchiveQuestLogs.IsEnabled = _settingsService.IsLogFolderValid;
         BtnToggleMonitoring.IsEnabled = _settingsService.IsLogFolderValid;
+    }
+
+    private async void BtnStartNewWipeArchive_Click(object sender, RoutedEventArgs e)
+    {
+        var profileType = ProfileService.Instance.CurrentProfile;
+        var profileName = ProfileService.Instance.GetProfileName(profileType);
+        var confirmation = MessageBox.Show(
+            $"{profileName}의 새 와이프 기록을 시작할까요?\n\n" +
+            "이전 내부 백업은 삭제하지 않고 별도 보관하며, 이후 퀘스트 로그는 새 기록에만 쌓입니다. " +
+            "현재 헬퍼에서 직접 입력한 진행 상태는 변경하지 않습니다.",
+            "새 와이프 기록 시작",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+        if (confirmation != MessageBoxResult.Yes)
+            return;
+
+        var logPath = _settingsService.LogFolderPath;
+        var wasMonitoring = _logSyncService.IsMonitoring;
+        var maintenanceGateAcquired = false;
+        try
+        {
+            BtnStartNewWipeArchive.IsEnabled = false;
+            if (wasMonitoring)
+                _logSyncService.StopMonitoring();
+
+            await _questLogMaintenanceGate.WaitAsync();
+            maintenanceGateAcquired = true;
+
+            // Seal every event already present into the previous generation before
+            // opening the new one. This prevents a delayed file-system event from moving
+            // an old-wipe notification into the new archive.
+            if (!string.IsNullOrWhiteSpace(logPath) && Directory.Exists(logPath))
+                await _logSyncService.ArchiveExistingQuestLogsAsync(logPath);
+
+            await QuestLogArchiveService.Instance.StartNewGenerationAsync(
+                profileType,
+                "user started a new wipe archive");
+            UpdateQuestSyncUI();
+            MessageBox.Show(
+                $"{profileName}의 새 와이프 기록을 시작했습니다. 이전 기록은 복구용으로 안전하게 보관됩니다.",
+                "완료",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            _log.Error("Failed to start a new quest archive generation", ex);
+            MessageBox.Show(
+                $"새 와이프 기록을 시작하지 못했습니다: {ex.Message}",
+                "오류",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+        finally
+        {
+            if (maintenanceGateAcquired)
+                _questLogMaintenanceGate.Release();
+
+            if (wasMonitoring && !string.IsNullOrWhiteSpace(logPath) && Directory.Exists(logPath))
+            {
+                try
+                {
+                    _logSyncService.StartMonitoring(logPath);
+                }
+                catch (Exception restartEx)
+                {
+                    _log.Warning($"Failed to restart quest monitoring after wipe reset: {restartEx.Message}");
+                }
+            }
+
+            BtnStartNewWipeArchive.IsEnabled = true;
+            UpdateQuestSyncUI();
+        }
     }
 
     /// <summary>
@@ -1708,6 +1824,7 @@ public partial class MainWindow : Window
         string? backupPath = null;
         var destructiveStepStarted = false;
         var wasMonitoring = _logSyncService.IsMonitoring;
+        var maintenanceGateAcquired = false;
 
         // Stop the live watcher before touching the user database. Otherwise a quest
         // notification arriving between reset and batch apply can race the rebuild.
@@ -1721,6 +1838,8 @@ public partial class MainWindow : Window
 
         try
         {
+            await _questLogMaintenanceGate.WaitAsync();
+            maintenanceGateAcquired = true;
             backupPath = await UserDataDbService.Instance
                 .CreateTimestampedBackupAsync($"quest-rebuild-{profileType}");
 
@@ -1777,6 +1896,9 @@ public partial class MainWindow : Window
         }
         finally
         {
+            if (maintenanceGateAcquired)
+                _questLogMaintenanceGate.Release();
+
             if (wasMonitoring && Directory.Exists(logPath))
             {
                 try
@@ -1903,8 +2025,11 @@ public partial class MainWindow : Window
         HideSettingsOverlay();
         ShowLoadingOverlay("퀘스트 로그 내부 백업 중...");
 
+        var maintenanceGateAcquired = false;
         try
         {
+            await _questLogMaintenanceGate.WaitAsync();
+            maintenanceGateAcquired = true;
             var progress = new Progress<string>(UpdateLoadingStatus);
             var result = await _logSyncService.ArchiveExistingQuestLogsAsync(logPath, progress);
             HideLoadingOverlay();
@@ -1928,6 +2053,11 @@ public partial class MainWindow : Window
                 "내부 백업 오류",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
+        }
+        finally
+        {
+            if (maintenanceGateAcquired)
+                _questLogMaintenanceGate.Release();
         }
     }
 
