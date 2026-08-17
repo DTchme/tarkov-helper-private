@@ -190,7 +190,12 @@ public sealed class QuestObjectiveService
             TaskNormalizedName = taskNormalizedName,
             TaskName = obj.QuestName,
             TaskNameKo = obj.QuestNameKo,
-            Locations = new List<QuestObjectiveLocation>()
+            Locations = new List<QuestObjectiveLocation>(),
+            ApplicableMapNames = MapConfig.SplitMapExpression(obj.EffectiveMapName)
+                .Where(name => !MapConfig.IsAnyMapName(name))
+                .ToList(),
+            AppliesToAllMaps = MapConfig.SplitMapExpression(obj.EffectiveMapName)
+                .Any(MapConfig.IsAnyMapName)
         };
 
         // LocationPoints를 QuestObjectiveLocation으로 변환

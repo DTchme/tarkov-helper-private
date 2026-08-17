@@ -524,6 +524,7 @@ public partial class MapPage : UserControl
         CmbTypePlant.Content = _loc.FilterPlant;
         CmbTypeExtract.Content = _loc.FilterExtract;
         CmbTypeFind.Content = _loc.FilterFind;
+        CmbTypeKill.Content = _loc.Kill;
 
         TxtCurrentMapOnly.Text = _loc.ThisMapOnly;
         TxtGroupByQuest.Text = _loc.GroupByQuest;
@@ -533,6 +534,8 @@ public partial class MapPage : UserControl
         TxtScreenshotFolderLabel.Text = _loc.ScreenshotFolder;
         BtnAutoDetect.Content = _loc.AutoDetect;
         BtnBrowseFolder.Content = _loc.Browse;
+        BtnClearScreenshotFolder.Content = _loc.ClearScreenshotFolder;
+        TxtScreenshotCleanupHint.Text = _loc.ScreenshotCleanupHint;
         TxtMarkerSettingsLabel.Text = _loc.MarkerSettings;
         ChkHideCompletedObjectives.Content = _loc.HideCompletedObjectives;
         TxtQuestStyleLabel.Text = _loc.QuestStyle;
@@ -1474,6 +1477,96 @@ public partial class MapPage : UserControl
             // DB에 저장
             SettingsService.Instance.MapScreenshotPath = dialog.FolderName;
         }
+    }
+
+    private async void BtnClearScreenshotFolder_Click(object sender, RoutedEventArgs e)
+    {
+        if (!ScreenshotFolderCleanupService.TryCreatePreview(
+                TxtScreenshotFolder.Text,
+                out var preview,
+                out var errorMessage) || preview == null)
+        {
+            MessageBox.Show(errorMessage, "스크린샷 정리", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        if (preview.Files.Count == 0)
+        {
+            var recentMessage = preview.SkippedRecentCount > 0
+                ? $"\n최근 저장 중일 수 있는 {preview.SkippedRecentCount}개 파일은 보호했습니다."
+                : string.Empty;
+            MessageBox.Show(
+                $"정리할 PNG 스크린샷이 없습니다.{recentMessage}",
+                "스크린샷 정리",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        var formattedSize = FormatFileSize(preview.TotalBytes);
+        var protectedMessage = preview.SkippedRecentCount > 0
+            ? $"\n최근 파일 {preview.SkippedRecentCount}개는 보호되어 제외됩니다."
+            : string.Empty;
+        var confirmed = MessageBox.Show(
+            $"다음 폴더의 PNG 스크린샷 {preview.Files.Count}개({formattedSize})를 휴지통으로 이동할까요?\n\n" +
+            $"{preview.FolderPath}{protectedMessage}\n\n다른 파일과 하위 폴더는 삭제하지 않습니다.",
+            "스크린샷 폴더 비우기",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (confirmed != MessageBoxResult.Yes)
+            return;
+
+        var wasTracking = _trackerService?.IsWatching == true;
+        BtnClearScreenshotFolder.IsEnabled = false;
+
+        try
+        {
+            if (wasTracking)
+                _trackerService?.StopTracking();
+
+            var result = await ScreenshotFolderCleanupService.MoveToRecycleBinAsync(preview);
+            var failureMessage = result.FailedFiles.Count > 0
+                ? $"\n이동 실패: {result.FailedFiles.Count}개"
+                : string.Empty;
+
+            MessageBox.Show(
+                $"PNG 스크린샷 {result.MovedToRecycleBinCount}개를 휴지통으로 이동했습니다.{failureMessage}",
+                "스크린샷 정리 완료",
+                MessageBoxButton.OK,
+                result.FailedFiles.Count == 0 ? MessageBoxImage.Information : MessageBoxImage.Warning);
+        }
+        catch (Exception ex)
+        {
+            _log.Error("Screenshot folder cleanup failed", ex);
+            MessageBox.Show(
+                $"스크린샷을 정리하지 못했습니다.\n{ex.Message}",
+                "스크린샷 정리 실패",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+        finally
+        {
+            if (wasTracking)
+                _trackerService?.StartTracking();
+
+            BtnClearScreenshotFolder.IsEnabled = true;
+        }
+    }
+
+    private static string FormatFileSize(long bytes)
+    {
+        string[] units = { "B", "KB", "MB", "GB" };
+        var size = (double)Math.Max(0, bytes);
+        var unitIndex = 0;
+
+        while (size >= 1024 && unitIndex < units.Length - 1)
+        {
+            size /= 1024;
+            unitIndex++;
+        }
+
+        return $"{size:0.##} {units[unitIndex]}";
     }
 
     private void SliderMarkerSize_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -3284,13 +3377,13 @@ public partial class MapPage : UserControl
             .Select(g => g.First())
             .ToList();
 
+        var currentMapConfig = _trackerService?.GetMapConfig(_currentMapKey ?? string.Empty);
+
         // 현재 맵에 있는 목표 먼저, 그 다음 다른 맵 목표 (퀘스트명으로 정렬)
         var sortedObjectives = uniqueObjectives
             .OrderBy(obj =>
             {
-                var isOnCurrentMap = obj.Locations.Any(loc =>
-                    loc.MapNormalizedName?.Equals(_currentMapKey, StringComparison.OrdinalIgnoreCase) == true ||
-                    loc.MapName?.Equals(_currentMapKey, StringComparison.OrdinalIgnoreCase) == true);
+                var isOnCurrentMap = obj.AppliesToMap(_currentMapKey, currentMapConfig);
                 return isOnCurrentMap ? 0 : 1;
             })
             .ThenBy(obj => obj.TaskName)
@@ -3301,14 +3394,16 @@ public partial class MapPage : UserControl
             // 현재 맵에 해당하는 위치의 FloorId로 층 표시 정보 가져오기
             var location = obj.Locations.FirstOrDefault(l =>
                 !string.IsNullOrEmpty(_currentMapKey) &&
-                (l.MapName.Equals(_currentMapKey, StringComparison.OrdinalIgnoreCase) ||
-                 l.MapNormalizedName?.Equals(_currentMapKey, StringComparison.OrdinalIgnoreCase) == true));
+                (currentMapConfig?.MatchesMapName(l.MapName) == true ||
+                 currentMapConfig?.MatchesMapName(l.MapNormalizedName) == true ||
+                 MapConfig.MapNamesMatch(l.MapName, _currentMapKey) ||
+                 MapConfig.MapNamesMatch(l.MapNormalizedName, _currentMapKey)));
             var floorIndicator = location != null ? GetFloorIndicator(location.FloorId) : null;
 
             viewModels.Add(new QuestObjectiveViewModel(
                 obj, _loc, _progressService,
                 obj.ObjectiveId == _selectedObjective?.ObjectiveId,
-                _currentMapKey, _currentFloorId, floorIndicator));
+                _currentMapKey, _currentFloorId, floorIndicator, currentMapConfig));
         }
 
         // 맵별 진행률 업데이트 (필터 적용 전 전체 목표 기준)
@@ -3805,6 +3900,8 @@ public class QuestObjectiveViewModel
     public string? OtherMapName { get; }
     public Visibility OtherMapBadgeVisibility { get; }
     public bool IsEnabled { get; }
+    public string ListOnlyDisplay { get; }
+    public Visibility ListOnlyBadgeVisibility { get; }
 
     // 그룹화 표시용 프로퍼티
     public bool IsGrouped { get; set; }
@@ -3817,26 +3914,26 @@ public class QuestObjectiveViewModel
     public Visibility FloorBadgeVisibility { get; }
 
     public QuestObjectiveViewModel(TaskObjectiveWithLocation objective, LocalizationService loc, bool isSelected = false)
-        : this(objective, loc, null, isSelected, null, null, null)
+        : this(objective, loc, null, isSelected, null, null, null, null)
     {
     }
 
     public QuestObjectiveViewModel(TaskObjectiveWithLocation objective, LocalizationService loc, QuestProgressService? progressService, bool isSelected = false)
-        : this(objective, loc, progressService, isSelected, null, null, null)
+        : this(objective, loc, progressService, isSelected, null, null, null, null)
     {
     }
 
     public QuestObjectiveViewModel(TaskObjectiveWithLocation objective, LocalizationService loc, QuestProgressService? progressService, bool isSelected, string? currentMapKey)
-        : this(objective, loc, progressService, isSelected, currentMapKey, null, null)
+        : this(objective, loc, progressService, isSelected, currentMapKey, null, null, null)
     {
     }
 
     public QuestObjectiveViewModel(TaskObjectiveWithLocation objective, LocalizationService loc, QuestProgressService? progressService, bool isSelected, string? currentMapKey, string? currentFloorId)
-        : this(objective, loc, progressService, isSelected, currentMapKey, currentFloorId, null)
+        : this(objective, loc, progressService, isSelected, currentMapKey, currentFloorId, null, null)
     {
     }
 
-    public QuestObjectiveViewModel(TaskObjectiveWithLocation objective, LocalizationService loc, QuestProgressService? progressService, bool isSelected, string? currentMapKey, string? currentFloorId, (string arrow, string floorText, Color color)? floorIndicator)
+    public QuestObjectiveViewModel(TaskObjectiveWithLocation objective, LocalizationService loc, QuestProgressService? progressService, bool isSelected, string? currentMapKey, string? currentFloorId, (string arrow, string floorText, Color color)? floorIndicator, LegacyMapConfig? currentMapConfig)
     {
         Objective = objective;
         IsSelected = isSelected;
@@ -3850,8 +3947,9 @@ public class QuestObjectiveViewModel
             ? objective.DescriptionKo
             : objective.Description;
 
-        TypeDisplay = GetTypeDisplay(objective.Type);
+        TypeDisplay = objective.Type == "kill" ? loc.Kill : GetTypeDisplay(objective.Type);
         TypeBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(objective.MarkerColor));
+        ListOnlyDisplay = loc.ListOnlyObjective;
 
         // 체크박스 상태 설정 (ObjectiveId 기반 - 동일 설명 목표 개별 추적)
         if (progressService != null)
@@ -3875,15 +3973,13 @@ public class QuestObjectiveViewModel
         // 현재 맵에 있는 목표인지 확인 (공백/하이픈 차이 무시)
         if (!string.IsNullOrEmpty(currentMapKey))
         {
-            IsOnCurrentMap = objective.Locations.Any(loc =>
-                MatchesMapKey(loc.MapName, currentMapKey) ||
-                MatchesMapKey(loc.MapNormalizedName, currentMapKey));
+            IsOnCurrentMap = objective.AppliesToMap(currentMapKey, currentMapConfig);
 
-            if (!IsOnCurrentMap && objective.Locations.Count > 0)
+            if (!IsOnCurrentMap && (objective.Locations.Count > 0 || objective.ApplicableMapNames.Count > 0))
             {
                 // 다른 맵 이름 표시
                 var otherLocation = objective.Locations.FirstOrDefault();
-                OtherMapName = otherLocation?.MapName ?? "Other Map";
+                OtherMapName = otherLocation?.MapName ?? objective.ApplicableMapNames.FirstOrDefault() ?? "Other Map";
                 OtherMapBadgeVisibility = Visibility.Visible;
                 IsEnabled = false;
             }
@@ -3899,6 +3995,10 @@ public class QuestObjectiveViewModel
             OtherMapBadgeVisibility = Visibility.Collapsed;
             IsEnabled = true;
         }
+
+        ListOnlyBadgeVisibility = IsOnCurrentMap && objective.Locations.Count == 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
 
         // 층 정보 초기화 - floorIndicator가 있으면 화살표 포함 표시
         if (floorIndicator.HasValue)
@@ -3985,19 +4085,6 @@ public class QuestObjectiveViewModel
         _ => type
     };
 
-    /// <summary>
-    /// 맵 이름 비교 (공백, 하이픈, 대소문자 차이 무시)
-    /// </summary>
-    private static bool MatchesMapKey(string? mapName, string mapKey)
-    {
-        if (string.IsNullOrEmpty(mapName) || string.IsNullOrEmpty(mapKey))
-            return false;
-
-        // 공백, 하이픈 제거 후 소문자로 비교
-        var normalizedMapName = mapName.Replace(" ", "").Replace("-", "").ToLowerInvariant();
-        var normalizedMapKey = mapKey.Replace(" ", "").Replace("-", "").ToLowerInvariant();
-        return normalizedMapName == normalizedMapKey;
-    }
 }
 
 /// <summary>
