@@ -144,6 +144,19 @@ public sealed class TaskObjectiveWithLocation
     public List<QuestObjectiveLocation> Locations { get; set; } = new();
 
     /// <summary>
+    /// 좌표가 없어도 목록에 표시할 수 있도록 DB에 지정된 적용 맵 이름을 보존합니다.
+    /// 이 값만 있는 목표는 지도 마커를 만들지 않습니다.
+    /// </summary>
+    [JsonPropertyName("applicableMapNames")]
+    public List<string> ApplicableMapNames { get; set; } = new();
+
+    /// <summary>
+    /// 모든 맵에 적용되는 목표인지 여부입니다.
+    /// </summary>
+    [JsonPropertyName("appliesToAllMaps")]
+    public bool AppliesToAllMaps { get; set; }
+
+    /// <summary>
     /// 목표 진행 상태 (UI 표시용)
     /// </summary>
     [JsonIgnore]
@@ -156,6 +169,24 @@ public sealed class TaskObjectiveWithLocation
     public int ObjectiveIndex { get; set; } = -1;
 
     /// <summary>
+    /// 현재 맵에 적용되는 목표인지 확인합니다. 좌표와 목록 전용 맵 메타데이터를 모두 검사합니다.
+    /// </summary>
+    public bool AppliesToMap(string? currentMapKey, MapConfig? mapConfig = null)
+    {
+        if (string.IsNullOrWhiteSpace(currentMapKey))
+            return true;
+
+        if (AppliesToAllMaps)
+            return true;
+
+        bool Matches(string? name) => mapConfig?.MatchesMapName(name) == true ||
+                                      MapConfig.MapNamesMatch(name, currentMapKey);
+
+        return ApplicableMapNames.Any(Matches) ||
+               Locations.Any(location => Matches(location.MapName) || Matches(location.MapNormalizedName));
+    }
+
+    /// <summary>
     /// 마커 색상 (목표 유형별 기본값 또는 사용자 설정)
     /// </summary>
     [JsonIgnore]
@@ -166,6 +197,7 @@ public sealed class TaskObjectiveWithLocation
         "plantItem" => "#9C27B0",  // Purple - 아이템 설치
         "extract" => "#2196F3",    // Blue - 탈출
         "findItem" => "#FFEB3B",   // Yellow - 아이템 찾기
+        "kill" => "#D32F2F",       // Red - 처치
         _ => "#607D8B"             // Gray - 기타
     };
 }

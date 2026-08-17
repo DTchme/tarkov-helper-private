@@ -85,7 +85,7 @@ public sealed class QuestObjectiveDbService
     public List<QuestObjective> GetObjectivesForMap(string mapKey, MapConfig mapConfig)
     {
         return _allObjectives
-            .Where(o => mapConfig.MatchesMapName(o.EffectiveMapName))
+            .Where(o => mapConfig.MatchesMapExpression(o.EffectiveMapName))
             .ToList();
     }
 
@@ -124,7 +124,18 @@ public sealed class QuestObjectiveDbService
             var hasQuestNameKo = await ColumnExistsAsync(connection, "Quests", "NameKo");
             var hasQuestNameJa = await ColumnExistsAsync(connection, "Quests", "NameJa");
 
-            // Load objectives with location points and quest info
+            // 좌표 목표와, 좌표는 없지만 맵 정보가 명확한 처치 목표를 로드합니다.
+            // 처치 목표는 목록에만 표시되며 가짜 좌표/마커를 만들지 않습니다.
+            var listOnlyKillClause = hasObjectiveType
+                ? @"OR (
+                       LOWER(o.ObjectiveType) = 'kill'
+                       AND COALESCE(
+                           NULLIF(TRIM(o.MapName), ''),
+                           NULLIF(TRIM(q.Location), '')
+                       ) IS NOT NULL
+                   )"
+                : string.Empty;
+
             var sql = $@"
                 SELECT o.Id, o.QuestId, o.Description, o.MapName, o.LocationPoints,
                        q.Location as QuestLocation,
@@ -137,7 +148,8 @@ public sealed class QuestObjectiveDbService
                 FROM QuestObjectives o
                 LEFT JOIN Quests q ON o.QuestId = q.Id
                 WHERE (o.LocationPoints IS NOT NULL AND o.LocationPoints != '')
-                   {(hasOptionalPoints ? "OR (o.OptionalPoints IS NOT NULL AND o.OptionalPoints != '')" : "")}";
+                   {(hasOptionalPoints ? "OR (o.OptionalPoints IS NOT NULL AND o.OptionalPoints != '')" : "")}
+                   {listOnlyKillClause}";
 
             await using var cmd = new SqliteCommand(sql, connection);
             await using var reader = await cmd.ExecuteReaderAsync();
@@ -179,8 +191,11 @@ public sealed class QuestObjectiveDbService
                     objective.ObjectiveType = ParseObjectiveType(typeStr);
                 }
 
-                // Only add if has any coordinates
-                if (objective.HasCoordinates || objective.HasOptionalPoints)
+                var isListOnlyKillObjective = objective.ObjectiveType == QuestObjectiveType.Kill &&
+                                              !string.IsNullOrWhiteSpace(objective.EffectiveMapName);
+
+                // 좌표 목표 또는 맵이 명시된 목록 전용 처치 목표만 추가
+                if (objective.HasCoordinates || objective.HasOptionalPoints || isListOnlyKillObjective)
                 {
                     newObjectives.Add(objective);
                 }
@@ -189,7 +204,10 @@ public sealed class QuestObjectiveDbService
             // Atomic swap - 모든 데이터가 준비된 후 한 번에 교체
             _allObjectives = newObjectives;
             _isLoaded = true;
-            System.Diagnostics.Debug.WriteLine($"[QuestObjectiveDbService] Loaded {_allObjectives.Count} objectives with location data");
+            var listOnlyKillCount = _allObjectives.Count(o =>
+                o.ObjectiveType == QuestObjectiveType.Kill && !o.HasCoordinates && !o.HasOptionalPoints);
+            System.Diagnostics.Debug.WriteLine(
+                $"[QuestObjectiveDbService] Loaded {_allObjectives.Count} objectives ({listOnlyKillCount} list-only kill objectives)");
             return true;
         }
         catch (Exception ex)

@@ -37,6 +37,9 @@ public partial class LocalizationService
     public string ThisMapOnly => "이 맵만";
     public string GroupByQuest => "그룹화";
     public string ScreenshotFolder => "스크린샷 폴더";
+    public string ClearScreenshotFolder => "스크린샷 폴더 비우기";
+    public string ScreenshotCleanupHint => "EFT 스크린샷 PNG 파일만 휴지통으로 이동합니다.";
+    public string ListOnlyObjective => "위치 없음";
     public string MarkerSettings => "마커 설정";
     public string HideCompletedObjectives => "완료된 목표 숨기기";
     public string QuestStyle => "퀘스트 스타일:";

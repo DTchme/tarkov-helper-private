@@ -281,4 +281,63 @@ public sealed class MapConfig
 
         return false;
     }
+
+    /// <summary>
+    /// 쉼표 등으로 구분된 맵 표현식이 이 맵과 일치하는지 확인합니다.
+    /// 처치 목표처럼 여러 맵 또는 모든 맵을 지정하는 목표에 사용합니다.
+    /// </summary>
+    public bool MatchesMapExpression(string? mapExpression)
+    {
+        var mapNames = SplitMapExpression(mapExpression);
+        return mapNames.Any(IsAnyMapName) || mapNames.Any(MatchesMapName);
+    }
+
+    /// <summary>
+    /// DB의 다중 맵 문자열을 개별 맵 이름으로 분리합니다.
+    /// </summary>
+    public static IReadOnlyList<string> SplitMapExpression(string? mapExpression)
+    {
+        if (string.IsNullOrWhiteSpace(mapExpression))
+            return Array.Empty<string>();
+
+        return mapExpression
+            .Split(new[] { ',', ';', '|' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    /// <summary>
+    /// 모든 맵을 뜻하는 DB 표기인지 확인합니다.
+    /// </summary>
+    public static bool IsAnyMapName(string? mapName)
+    {
+        if (string.IsNullOrWhiteSpace(mapName))
+            return false;
+
+        var normalized = NormalizeMapNameForComparison(mapName);
+        return normalized is "any" or "all" or "allmaps" or "anymap" or "anywhere";
+    }
+
+    /// <summary>
+    /// 설정 객체가 없는 UI에서도 맵 키를 안전하게 비교하기 위한 기본 비교입니다.
+    /// </summary>
+    public static bool MapNamesMatch(string? left, string? right)
+    {
+        if (string.IsNullOrWhiteSpace(left) || string.IsNullOrWhiteSpace(right))
+            return false;
+
+        return NormalizeMapNameForComparison(left) == NormalizeMapNameForComparison(right);
+    }
+
+    private static string NormalizeMapNameForComparison(string value)
+    {
+        var normalized = string.Concat(value.Where(char.IsLetterOrDigit)).ToLowerInvariant();
+        return normalized switch
+        {
+            "thelab" or "lab" => "labs",
+            "streetsoftarkov" => "streets",
+            _ => normalized
+        };
+    }
 }

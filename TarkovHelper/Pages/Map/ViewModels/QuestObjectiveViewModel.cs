@@ -79,7 +79,7 @@ public class QuestObjectiveViewModel
             ? objective.DescriptionKo
             : objective.Description;
 
-        TypeDisplay = GetTypeDisplay(objective.Type);
+        TypeDisplay = objective.Type == "kill" ? loc.Kill : GetTypeDisplay(objective.Type);
         TypeBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(objective.MarkerColor));
 
         // 체크박스 상태 설정 (ObjectiveId 기반 - 동일 설명 목표 개별 추적)
@@ -104,15 +104,13 @@ public class QuestObjectiveViewModel
         // 현재 맵에 있는 목표인지 확인 (공백/하이픈 차이 무시)
         if (!string.IsNullOrEmpty(currentMapKey))
         {
-            IsOnCurrentMap = objective.Locations.Any(loc =>
-                MatchesMapKey(loc.MapName, currentMapKey) ||
-                MatchesMapKey(loc.MapNormalizedName, currentMapKey));
+            IsOnCurrentMap = objective.AppliesToMap(currentMapKey);
 
-            if (!IsOnCurrentMap && objective.Locations.Count > 0)
+            if (!IsOnCurrentMap && (objective.Locations.Count > 0 || objective.ApplicableMapNames.Count > 0))
             {
                 // 다른 맵 이름 표시
                 var otherLocation = objective.Locations.FirstOrDefault();
-                OtherMapName = otherLocation?.MapName ?? "Other Map";
+                OtherMapName = otherLocation?.MapName ?? objective.ApplicableMapNames.FirstOrDefault() ?? "Other Map";
                 OtherMapBadgeVisibility = Visibility.Visible;
                 IsEnabled = false;
             }
@@ -214,17 +212,4 @@ public class QuestObjectiveViewModel
         _ => type
     };
 
-    /// <summary>
-    /// 맵 이름 비교 (공백, 하이픈, 대소문자 차이 무시)
-    /// </summary>
-    private static bool MatchesMapKey(string? mapName, string mapKey)
-    {
-        if (string.IsNullOrEmpty(mapName) || string.IsNullOrEmpty(mapKey))
-            return false;
-
-        // 공백, 하이픈 제거 후 소문자로 비교
-        var normalizedMapName = mapName.Replace(" ", "").Replace("-", "").ToLowerInvariant();
-        var normalizedMapKey = mapKey.Replace(" ", "").Replace("-", "").ToLowerInvariant();
-        return normalizedMapName == normalizedMapKey;
-    }
 }

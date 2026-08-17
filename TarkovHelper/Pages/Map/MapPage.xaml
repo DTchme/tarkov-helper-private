@@ -207,6 +207,7 @@
                                         <ComboBoxItem x:Name="CmbTypePlant" Content="설치" Tag="plantItem"/>
                                         <ComboBoxItem x:Name="CmbTypeExtract" Content="탈출" Tag="extract"/>
                                         <ComboBoxItem x:Name="CmbTypeFind" Content="획득" Tag="findItem"/>
+                                        <ComboBoxItem x:Name="CmbTypeKill" Content="처치" Tag="kill"/>
                                     </ComboBox>
                                     <!-- 현재 맵만 보기 -->
                                     <CheckBox x:Name="ChkCurrentMapOnly"
@@ -367,6 +368,14 @@
                                                             Visibility="{Binding OtherMapBadgeVisibility}"
                                                             VerticalAlignment="Center">
                                                         <TextBlock Text="{Binding OtherMapName}"
+                                                                   FontSize="11" Foreground="White" FontWeight="SemiBold"
+                                                                   VerticalAlignment="Center"/>
+                                                    </Border>
+                                                    <!-- 좌표가 없어 목록에만 표시되는 목표 -->
+                                                    <Border Background="#455A64" CornerRadius="3" Padding="5,2" Margin="4,0,0,0"
+                                                            Visibility="{Binding ListOnlyBadgeVisibility}"
+                                                            VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding ListOnlyDisplay}"
                                                                    FontSize="11" Foreground="White" FontWeight="SemiBold"
                                                                    VerticalAlignment="Center"/>
                                                     </Border>
@@ -714,12 +723,20 @@
                                    Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,8"/>
                         <TextBox x:Name="TxtScreenshotFolder" IsReadOnly="True" Margin="0,0,0,8"
                                  TextWrapping="Wrap"/>
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,24">
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                             <Button x:Name="BtnAutoDetect" Content="자동 감지" Padding="12,6"
                                     Margin="0,0,8,0" Click="BtnAutoDetect_Click"/>
                             <Button x:Name="BtnBrowseFolder" Content="찾아보기" Padding="12,6"
                                     Click="BtnBrowseFolder_Click"/>
                         </StackPanel>
+                        <Button x:Name="BtnClearScreenshotFolder" Content="스크린샷 폴더 비우기"
+                                HorizontalAlignment="Stretch" Padding="12,7" Margin="0,0,0,4"
+                                Click="BtnClearScreenshotFolder_Click"
+                                Foreground="{StaticResource WarningBrush}"/>
+                        <TextBlock x:Name="TxtScreenshotCleanupHint"
+                                   Text="EFT 스크린샷 PNG 파일만 휴지통으로 이동합니다."
+                                   FontSize="10" TextWrapping="Wrap"
+                                   Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,24"/>
 
                         <!-- 마커 설정 -->
                         <TextBlock x:Name="TxtMarkerSettingsLabel" Text="마커 설정" FontWeight="SemiBold"

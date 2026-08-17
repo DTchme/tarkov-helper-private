@@ -1,6 +1,7 @@
 using Microsoft.Data.Sqlite;
 using TarkovHelper.Debug;
 using TarkovHelper.Models;
+using TarkovHelper.Models.Map;
 using TarkovHelper.Services;
 using TarkovHelper.Services.Map;
 
@@ -211,6 +212,84 @@ Run("screenshot watcher emits a parsed position for a new EFT screenshot", () =>
         var position = detected.Task.WaitAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
         Assert(Math.Abs(position.X - (-169.17)) < 0.001, "the watcher must emit the parsed X coordinate");
         Assert(Math.Abs((position.Z ?? 0) - (-475.66)) < 0.001, "the watcher must emit the parsed Z coordinate");
+    }
+    finally
+    {
+        Directory.Delete(tempRoot, recursive: true);
+    }
+});
+
+Run("multi-map and all-map kill objectives apply without map markers", () =>
+{
+    var labs = new MapConfig
+    {
+        Key = "Labs",
+        DisplayName = "The Lab",
+        Aliases = new List<string> { "labs", "lab" }
+    };
+    var streets = new MapConfig
+    {
+        Key = "StreetsOfTarkov",
+        DisplayName = "Streets of Tarkov",
+        Aliases = new List<string> { "streets" }
+    };
+
+    Assert(labs.MatchesMapExpression("Reserve, The Lab"), "a multi-map expression must match The Lab");
+    Assert(streets.MatchesMapExpression("Streets of Tarkov, Interchange"), "spaced map names must match map keys");
+    Assert(labs.MatchesMapExpression("Any"), "Any must match every map");
+
+    var listOnlyKill = new TaskObjectiveWithLocation
+    {
+        ObjectiveId = "kill-on-labs",
+        Type = "kill",
+        ApplicableMapNames = new List<string> { "The Lab", "Reserve" }
+    };
+    Assert(listOnlyKill.Locations.Count == 0, "a list-only kill objective must not invent a marker location");
+    Assert(listOnlyKill.AppliesToMap("Labs", labs), "a list-only kill objective must appear on its matching map");
+    Assert(!listOnlyKill.AppliesToMap("StreetsOfTarkov", streets), "a list-only kill objective must stay off unrelated maps");
+
+    listOnlyKill.AppliesToAllMaps = true;
+    Assert(listOnlyKill.AppliesToMap("StreetsOfTarkov", streets), "an all-map kill objective must appear on every map");
+});
+
+Run("screenshot cleanup preview only selects safe top-level PNG files", () =>
+{
+    var tempRoot = Path.Combine(Path.GetTempPath(), "TarkovHelperCleanupRegression", Guid.NewGuid().ToString("N"));
+    var screenshotFolder = Path.Combine(tempRoot, "Screenshots");
+    var nestedFolder = Path.Combine(screenshotFolder, "nested");
+    Directory.CreateDirectory(nestedFolder);
+
+    try
+    {
+        var oldPng = Path.Combine(screenshotFolder, "old.png");
+        var uppercasePng = Path.Combine(screenshotFolder, "older.PNG");
+        var recentPng = Path.Combine(screenshotFolder, "recent.png");
+        File.WriteAllText(oldPng, "old");
+        File.WriteAllText(uppercasePng, "older");
+        File.WriteAllText(recentPng, "recent");
+        File.WriteAllText(Path.Combine(screenshotFolder, "keep.txt"), "keep");
+        File.WriteAllText(Path.Combine(nestedFolder, "keep.png"), "keep");
+
+        var now = DateTime.UtcNow;
+        File.SetLastWriteTimeUtc(oldPng, now.AddMinutes(-2));
+        File.SetLastWriteTimeUtc(uppercasePng, now.AddMinutes(-1));
+        File.SetLastWriteTimeUtc(recentPng, now);
+
+        var valid = ScreenshotFolderCleanupService.TryCreatePreview(
+            screenshotFolder,
+            out var preview,
+            out var error,
+            now);
+
+        Assert(valid, $"a valid Screenshots folder must be accepted: {error}");
+        Assert(preview != null, "cleanup preview must be returned");
+        Assert(preview!.Files.Count == 2, "only old top-level PNG files must be selected");
+        Assert(preview.SkippedRecentCount == 1, "a recently written PNG must be protected");
+        Assert(preview.Files.All(path => Path.GetDirectoryName(path) == screenshotFolder), "nested files must never be selected");
+
+        Assert(
+            !ScreenshotFolderCleanupService.TryCreatePreview(tempRoot, out _, out _, now),
+            "a folder not named Screenshots must be rejected");
     }
     finally
     {
