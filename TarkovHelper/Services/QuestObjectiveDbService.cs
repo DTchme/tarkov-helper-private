@@ -123,6 +123,8 @@ public sealed class QuestObjectiveDbService
             // Check if Quests table has localization columns
             var hasQuestNameKo = await ColumnExistsAsync(connection, "Quests", "NameKo");
             var hasQuestNameJa = await ColumnExistsAsync(connection, "Quests", "NameJa");
+            var hasQuestBsgId = await ColumnExistsAsync(connection, "Quests", "BsgId");
+            var hasQuestIsApproved = await ColumnExistsAsync(connection, "Quests", "IsApproved");
 
             // 좌표 목표와, 좌표는 없지만 맵 정보가 명확한 처치 목표를 로드합니다.
             // 처치 목표는 목록에만 표시되며 가짜 좌표/마커를 만들지 않습니다.
@@ -142,7 +144,9 @@ public sealed class QuestObjectiveDbService
                        q.Name as QuestName,
                        {(hasQuestNameKo ? "q.NameKo as QuestNameKo," : "NULL as QuestNameKo,")}
                        {(hasQuestNameJa ? "q.NameJa as QuestNameJa," : "NULL as QuestNameJa,")}
-                       q.Trader as TraderName
+                       q.Trader as TraderName,
+                       {(hasQuestBsgId ? "q.BsgId" : "NULL")} as QuestBsgId,
+                       {(hasQuestIsApproved ? "q.IsApproved" : "1")} as QuestIsApproved
                        {(hasOptionalPoints ? ", o.OptionalPoints" : "")}
                        {(hasObjectiveType ? ", o.ObjectiveType" : "")}
                 FROM QuestObjectives o
@@ -156,17 +160,32 @@ public sealed class QuestObjectiveDbService
 
             while (await reader.ReadAsync())
             {
+                var questId = reader.GetString(1);
+                var questLocation = reader.IsDBNull(5) ? null : reader.GetString(5);
+                var traderName = reader.IsDBNull(9) ? null : reader.GetString(9);
+                var questBsgId = reader.IsDBNull(10) ? null : reader.GetString(10);
+                var questIsApproved = !reader.IsDBNull(11) && reader.GetInt32(11) == 1;
+                if (ArenaQuestExclusionPolicy.IsExcludedStoredQuest(
+                        questId,
+                        questBsgId,
+                        traderName,
+                        questLocation,
+                        questIsApproved))
+                {
+                    continue;
+                }
+
                 var objective = new QuestObjective
                 {
                     Id = reader.GetString(0),
-                    QuestId = reader.GetString(1),
+                    QuestId = questId,
                     Description = reader.IsDBNull(2) ? "" : reader.GetString(2),
                     MapName = reader.IsDBNull(3) ? null : reader.GetString(3),
-                    QuestLocation = reader.IsDBNull(5) ? null : reader.GetString(5),
+                    QuestLocation = questLocation,
                     QuestName = reader.IsDBNull(6) ? "" : reader.GetString(6),
                     QuestNameKo = reader.IsDBNull(7) ? null : reader.GetString(7),
                     QuestNameJa = reader.IsDBNull(8) ? null : reader.GetString(8),
-                    TraderName = reader.IsDBNull(9) ? null : reader.GetString(9)
+                    TraderName = traderName
                 };
 
                 // Parse LocationPoints JSON
@@ -174,7 +193,7 @@ public sealed class QuestObjectiveDbService
                 objective.LocationPointsJson = locationJson;
 
                 // Track column index for optional fields
-                int nextIndex = 10;
+                int nextIndex = 12;
 
                 // Parse OptionalPoints JSON if column exists
                 if (hasOptionalPoints && reader.FieldCount > nextIndex)
