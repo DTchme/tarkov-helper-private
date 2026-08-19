@@ -191,6 +191,7 @@ public sealed class QuestDbService
         var hasRequiredPrestigeLevel = await ColumnExistsAsync(connection, "Quests", "RequiredPrestigeLevel");
         var hasRequiredDecodeCount = await ColumnExistsAsync(connection, "Quests", "RequiredDecodeCount");
         var hasWikiPageLink = await ColumnExistsAsync(connection, "Quests", "WikiPageLink");
+        var hasIsApproved = await ColumnExistsAsync(connection, "Quests", "IsApproved");
         _log.Debug($"BsgId column exists: {hasBsgId}");
 
         // NormalizedName이 없으면 Name에서 생성
@@ -210,7 +211,8 @@ public sealed class QuestDbService
                 {(hasExcludedEdition ? "ExcludedEdition" : "NULL")} as ExcludedEdition,
                 {(hasRequiredPrestigeLevel ? "RequiredPrestigeLevel" : "NULL")} as RequiredPrestigeLevel,
                 {(hasRequiredDecodeCount ? "RequiredDecodeCount" : "NULL")} as RequiredDecodeCount,
-                {(hasWikiPageLink ? "WikiPageLink" : "NULL")} as WikiPageLink
+                {(hasWikiPageLink ? "WikiPageLink" : "NULL")} as WikiPageLink,
+                {(hasIsApproved ? "IsApproved" : "1")} as IsApproved
             FROM Quests
             ORDER BY Name";
 
@@ -221,15 +223,30 @@ public sealed class QuestDbService
         {
             var id = reader.GetString(0);
             var bsgId = reader.IsDBNull(1) ? null : reader.GetString(1);
+            var name = reader.IsDBNull(2) ? "" : reader.GetString(2);
+            var trader = reader.IsDBNull(5) ? "" : reader.GetString(5);
+            var location = reader.IsDBNull(6) ? null : reader.GetString(6);
+            var isApproved = !reader.IsDBNull(17) && reader.GetInt32(17) == 1;
+
+            if (ArenaQuestExclusionPolicy.IsExcludedStoredQuest(
+                    id,
+                    bsgId,
+                    trader,
+                    location,
+                    isApproved))
+            {
+                _log.Debug($"Excluded Arena quest from runtime data: {name} ({id})");
+                continue;
+            }
 
             var quest = new TarkovTask
             {
                 Ids = new List<string> { id },
-                Name = reader.IsDBNull(2) ? "" : reader.GetString(2),
+                Name = name,
                 NameKo = reader.IsDBNull(3) ? null : reader.GetString(3),
                 NameJa = reader.IsDBNull(4) ? null : reader.GetString(4),
-                Trader = reader.IsDBNull(5) ? "" : reader.GetString(5),
-                Maps = reader.IsDBNull(6) ? null : ParseMaps(reader.GetString(6)),
+                Trader = trader,
+                Maps = ParseMaps(location),
                 RequiredLevel = reader.IsDBNull(7) ? null : reader.GetInt32(7),
                 RequiredScavKarma = reader.IsDBNull(8) ? null : reader.GetDouble(8),
                 ReqKappa = !reader.IsDBNull(9) && reader.GetInt32(9) == 1,

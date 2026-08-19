@@ -677,14 +677,20 @@ public sealed class QuestApiRefreshService
                 if (string.IsNullOrWhiteSpace(bsgId))
                     continue;
 
-                var internalId = BuildInternalQuestId(task, bsgId, existingQuestIds, usedInternalIds);
-                questIdByBsg[bsgId] = internalId;
-
                 var name = GetString(task, "name") ?? bsgId;
                 var normalizedName = GetString(task, "normalizedName") ?? BuildNormalizedName(name);
                 var trader = GetNestedString(task, "trader", "name") ?? string.Empty;
                 var wikiLink = GetString(task, "wikiLink");
                 var location = CollectQuestMaps(task);
+                if (ArenaQuestExclusionPolicy.IsArenaLocation(location))
+                {
+                    _log.Debug($"Excluded Arena quest from tarkov.dev refresh: {name} ({bsgId})");
+                    continue;
+                }
+
+                var internalId = BuildInternalQuestId(task, bsgId, existingQuestIds, usedInternalIds);
+                questIdByBsg[bsgId] = internalId;
+
                 var minLevel = GetNullableInt(task, "minPlayerLevel");
                 var kappaRequired = GetBool(task, "kappaRequired") ? 1 : 0;
                 var faction = GetString(task, "factionName");

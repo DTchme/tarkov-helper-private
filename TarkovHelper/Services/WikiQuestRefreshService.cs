@@ -312,7 +312,7 @@ public sealed class WikiQuestRefreshService
         {
             "Ground Zero", "Streets of Tarkov", "Interchange", "Customs", "Factory",
             "Woods", "Shoreline", "Reserve", "Lighthouse", "The Labyrinth", "The Lab",
-            "Terminal", "Icebreaker"
+            "Terminal", "Icebreaker", "Arena"
         };
         return string.Join(", ", known.Where(map => text.Contains(map, StringComparison.OrdinalIgnoreCase)));
     }
@@ -337,17 +337,41 @@ public sealed class WikiQuestRefreshService
 
         try
         {
+            var removedArenaQuestCount = await ArenaQuestExclusionPolicy.RemoveExcludedRowsAsync(
+                connection,
+                tx,
+                cancellationToken);
+            if (removedArenaQuestCount > 0)
+                _log.Info($"Removed {removedArenaQuestCount} Arena-only quests before Wiki overlay");
+
             var existing = new Dictionary<string, ExistingQuest>(StringComparer.OrdinalIgnoreCase);
-            await using (var cmd = new SqliteCommand("SELECT Id, NameEN, Name FROM Quests", connection, tx))
+            await using (var cmd = new SqliteCommand(
+                             "SELECT Id, NameEN, Name, BsgId, IsApproved, Trader, Location FROM Quests",
+                             connection,
+                             tx))
             await using (var reader = await cmd.ExecuteReaderAsync(cancellationToken))
             {
                 while (await reader.ReadAsync(cancellationToken))
                 {
                     var id = reader.GetString(0);
                     var name = !reader.IsDBNull(1) ? reader.GetString(1) : reader.GetString(2);
+                    var bsgId = reader.IsDBNull(3) ? null : reader.GetString(3);
+                    var isApproved = !reader.IsDBNull(4) && reader.GetInt32(4) == 1;
+                    var trader = reader.IsDBNull(5) ? null : reader.GetString(5);
+                    var location = reader.IsDBNull(6) ? null : reader.GetString(6);
+                    if (ArenaQuestExclusionPolicy.IsExcludedStoredQuest(
+                            id,
+                            bsgId,
+                            trader,
+                            location,
+                            isApproved))
+                    {
+                        continue;
+                    }
+
                     var key = NormalizeQuestName(name);
                     if (!existing.ContainsKey(key))
-                        existing[key] = new ExistingQuest(id, name);
+                        existing[key] = new ExistingQuest(id, name, !string.IsNullOrWhiteSpace(bsgId) || isApproved);
                 }
             }
 
@@ -360,9 +384,19 @@ public sealed class WikiQuestRefreshService
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var key = NormalizeQuestName(row.Name);
+                existing.TryGetValue(key, out var current);
+                if (ArenaQuestExclusionPolicy.IsExcludedWikiQuest(
+                        row.Trader,
+                        row.Map,
+                        current?.IsStructured == true))
+                {
+                    _log.Debug($"Excluded Arena quest from Wiki refresh: {row.Name}");
+                    continue;
+                }
+
                 string questId;
 
-                if (existing.TryGetValue(key, out var current))
+                if (current != null)
                 {
                     questId = current.Id;
                     await using var update = new SqliteCommand(@"
@@ -400,7 +434,7 @@ public sealed class WikiQuestRefreshService
                     insert.Parameters.AddWithValue("@location", row.Map);
                     insert.Parameters.AddWithValue("@updatedAt", updatedAt);
                     await insert.ExecuteNonQueryAsync(cancellationToken);
-                    existing[key] = new ExistingQuest(questId, row.Name);
+                    existing[key] = new ExistingQuest(questId, row.Name, false);
                     added++;
                 }
 
@@ -605,7 +639,7 @@ public sealed class WikiQuestRefreshService
     private sealed record FandomPageResponse(string Title, string Url, string Html);
     private sealed record QuestParseResult(List<WikiQuestRow> Rows, List<string> CollectorItems);
     private sealed record WikiQuestRow(string Name, string Trader, string Map, string WikiLink, List<string> Objectives);
-    private sealed record ExistingQuest(string Id, string Name);
+    private sealed record ExistingQuest(string Id, string Name, bool IsStructured);
     private sealed record OverlayStats(int Added, int Updated, int ObjectivesFilled, int CollectorItems);
 
     private sealed class StringTupleComparer : IEqualityComparer<(string Name, string Trader)>
