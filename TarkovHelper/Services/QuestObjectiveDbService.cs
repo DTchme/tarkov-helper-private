@@ -165,9 +165,11 @@ public sealed class QuestObjectiveDbService
                 var traderName = reader.IsDBNull(9) ? null : reader.GetString(9);
                 var questBsgId = reader.IsDBNull(10) ? null : reader.GetString(10);
                 var questIsApproved = !reader.IsDBNull(11) && reader.GetInt32(11) == 1;
-                if (ArenaQuestExclusionPolicy.IsExcludedStoredQuest(
+                var questName = reader.IsDBNull(6) ? "" : reader.GetString(6);
+                if (QuestExclusionPolicy.IsExcludedStoredQuest(
                         questId,
                         questBsgId,
+                        questName,
                         traderName,
                         questLocation,
                         questIsApproved))
@@ -182,7 +184,7 @@ public sealed class QuestObjectiveDbService
                     Description = reader.IsDBNull(2) ? "" : reader.GetString(2),
                     MapName = reader.IsDBNull(3) ? null : reader.GetString(3),
                     QuestLocation = questLocation,
-                    QuestName = reader.IsDBNull(6) ? "" : reader.GetString(6),
+                    QuestName = questName,
                     QuestNameKo = reader.IsDBNull(7) ? null : reader.GetString(7),
                     QuestNameJa = reader.IsDBNull(8) ? null : reader.GetString(8),
                     TraderName = traderName

@@ -3,11 +3,24 @@ using Microsoft.Data.Sqlite;
 namespace TarkovHelper.Services;
 
 /// <summary>
-/// Keeps Escape from Tarkov: Arena-only quests out of the EFT quest tracker.
-/// Main-game Ref quests are intentionally retained.
+/// Keeps quests that do not belong in the current EFT quest tracker out of every
+/// import and runtime path. Main-game Ref quests are intentionally retained.
 /// </summary>
-public static class ArenaQuestExclusionPolicy
+public static class QuestExclusionPolicy
 {
+    private const string SwiftOneBsgId = "60e729cf5698ee7b05057439";
+
+    /// <summary>
+    /// Quests removed from the live game can remain on community Wiki pages for a while.
+    /// Match both the stable BSG id and a conservative exact normalized name so stale
+    /// structured and Wiki-only representations are blocked.
+    /// </summary>
+    public static bool IsExplicitlyRemovedQuest(string? bsgId, string? name)
+    {
+        return bsgId?.Equals(SwiftOneBsgId, StringComparison.OrdinalIgnoreCase) == true ||
+               NormalizeName(name).Equals("swiftone", StringComparison.Ordinal);
+    }
+
     public static bool IsArenaLocation(string? location)
     {
         if (string.IsNullOrWhiteSpace(location))
@@ -26,11 +39,12 @@ public static class ArenaQuestExclusionPolicy
     public static bool IsExcludedStoredQuest(
         string? id,
         string? bsgId,
+        string? name,
         string? trader,
         string? location,
         bool isApproved)
     {
-        if (IsArenaLocation(location))
+        if (IsExplicitlyRemovedQuest(bsgId, name) || IsArenaLocation(location))
             return true;
 
         return !isApproved &&
@@ -39,16 +53,23 @@ public static class ArenaQuestExclusionPolicy
                trader?.Equals("Ref", StringComparison.OrdinalIgnoreCase) == true;
     }
 
+    public static bool IsExcludedApiQuest(string? bsgId, string? name, string? location)
+    {
+        return IsExplicitlyRemovedQuest(bsgId, name) || IsArenaLocation(location);
+    }
+
     /// <summary>
     /// New Ref rows found only on the Wiki are Arena quest lines. Existing structured
     /// Ref quests may still receive Wiki text updates.
     /// </summary>
     public static bool IsExcludedWikiQuest(
+        string? name,
         string? trader,
         string? location,
         bool hasStructuredQuest)
     {
-        return IsArenaLocation(location) ||
+        return IsExplicitlyRemovedQuest(null, name) ||
+               IsArenaLocation(location) ||
                (!hasStructuredQuest && trader?.Equals("Ref", StringComparison.OrdinalIgnoreCase) == true);
     }
 
@@ -77,7 +98,7 @@ public static class ArenaQuestExclusionPolicy
                 var location = reader.IsDBNull(4) ? null : reader.GetString(4);
                 var isApproved = !reader.IsDBNull(5) && reader.GetInt32(5) == 1;
 
-                if (IsExcludedStoredQuest(id, bsgId, trader, location, isApproved))
+                if (IsExcludedStoredQuest(id, bsgId, name, trader, location, isApproved))
                     excluded.Add((id, bsgId, name));
             }
         }
@@ -186,5 +207,13 @@ public static class ArenaQuestExclusionPolicy
             transaction);
         command.Parameters.AddWithValue("@name", tableName);
         return Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken)) > 0;
+    }
+
+    private static string NormalizeName(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        return string.Concat(value.Where(char.IsLetterOrDigit)).ToLowerInvariant();
     }
 }

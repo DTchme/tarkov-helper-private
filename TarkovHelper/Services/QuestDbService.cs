@@ -228,14 +228,15 @@ public sealed class QuestDbService
             var location = reader.IsDBNull(6) ? null : reader.GetString(6);
             var isApproved = !reader.IsDBNull(17) && reader.GetInt32(17) == 1;
 
-            if (ArenaQuestExclusionPolicy.IsExcludedStoredQuest(
+            if (QuestExclusionPolicy.IsExcludedStoredQuest(
                     id,
                     bsgId,
+                    name,
                     trader,
                     location,
                     isApproved))
             {
-                _log.Debug($"Excluded Arena quest from runtime data: {name} ({id})");
+                _log.Debug($"Excluded quest from runtime data: {name} ({id})");
                 continue;
             }
 

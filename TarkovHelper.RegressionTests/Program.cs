@@ -7,12 +7,15 @@ using TarkovHelper.Services.Map;
 
 var failures = new List<string>();
 
-if (args is ["--remove-arena-quests", var databasePath])
+if (args.Length == 2 &&
+    (args[0].Equals("--remove-excluded-quests", StringComparison.OrdinalIgnoreCase) ||
+     args[0].Equals("--remove-arena-quests", StringComparison.OrdinalIgnoreCase)))
 {
+    var databasePath = args[1];
     using var connection = new SqliteConnection($"Data Source={databasePath};Mode=ReadWrite");
     connection.Open();
     using var transaction = connection.BeginTransaction();
-    var removed = ArenaQuestExclusionPolicy.RemoveExcludedRowsAsync(connection, transaction)
+    var removed = QuestExclusionPolicy.RemoveExcludedRowsAsync(connection, transaction)
         .GetAwaiter()
         .GetResult();
     transaction.Commit();
@@ -21,7 +24,7 @@ if (args is ["--remove-arena-quests", var databasePath])
         compact.CommandText = "PRAGMA optimize; VACUUM;";
         compact.ExecuteNonQuery();
     }
-    Console.WriteLine($"Removed {removed} Arena-only quests from {databasePath}");
+    Console.WriteLine($"Removed {removed} excluded quests from {databasePath}");
     return 0;
 }
 
@@ -150,44 +153,63 @@ Run("profile markers are applied in sequence", () =>
     Assert(parsed.FinalSourceProfile == LogProfileKind.Pvp, "final cursor profile must be PVP");
 });
 
-Run("Arena-only quests are excluded without hiding main-game Ref quests", () =>
+Run("removed and Arena-only quests are excluded without hiding live EFT quests", () =>
 {
     Assert(
-        ArenaQuestExclusionPolicy.IsExcludedStoredQuest(
+        QuestExclusionPolicy.IsExcludedStoredQuest(
             "quest-arena",
             "bsg-arena",
+            "Arena Task",
             "Ref",
             "Arena",
             isApproved: true),
         "an explicitly Arena-located quest must be excluded");
     Assert(
-        ArenaQuestExclusionPolicy.IsExcludedStoredQuest(
+        QuestExclusionPolicy.IsExcludedStoredQuest(
             "fandom_arena_business",
             null,
+            "Arena Business",
             "Ref",
             null,
             isApproved: false),
         "a Wiki-only Ref quest must be excluded as an Arena quest line");
     Assert(
-        !ArenaQuestExclusionPolicy.IsExcludedStoredQuest(
+        !QuestExclusionPolicy.IsExcludedStoredQuest(
             "easy-money-part-1",
             "6658a15615cbb1b876c4d754",
+            "Easy Money - Part 1",
             "Ref",
             "Customs",
             isApproved: true),
         "a structured Ref quest completed in EFT must remain visible");
     Assert(
-        !ArenaQuestExclusionPolicy.IsExcludedWikiQuest(
+        !QuestExclusionPolicy.IsExcludedWikiQuest(
+            "Easy Money - Part 1",
             "Ref",
             "Customs",
             hasStructuredQuest: true),
         "the Wiki may update an existing structured main-game Ref quest");
     Assert(
-        ArenaQuestExclusionPolicy.IsArenaLocation("Customs; Arena"),
+        QuestExclusionPolicy.IsArenaLocation("Customs; Arena"),
         "Arena must be recognized in a multi-location value");
+    Assert(
+        QuestExclusionPolicy.IsExplicitlyRemovedQuest("60e729cf5698ee7b05057439", "outdated label"),
+        "Swift One must be excluded by its stable BSG id");
+    Assert(
+        QuestExclusionPolicy.IsExplicitlyRemovedQuest(null, "Swift One"),
+        "a stale Wiki-only Swift One row must be excluded by exact normalized name");
+    Assert(
+        !QuestExclusionPolicy.IsExplicitlyRemovedQuest(null, "Swift Strike"),
+        "similar live quest names must not be excluded");
+    Assert(
+        QuestExclusionPolicy.IsExcludedApiQuest(
+            "60e729cf5698ee7b05057439",
+            "Swift One",
+            "Woods"),
+        "a stale structured API payload must not re-add Swift One");
 });
 
-Run("Arena database cleanup removes dependencies and preserves EFT Ref quests", () =>
+Run("excluded quest cleanup removes dependencies and preserves live EFT quests", () =>
 {
     var tempRoot = Path.Combine(Path.GetTempPath(), "TarkovHelperArenaRegression", Guid.NewGuid().ToString("N"));
     Directory.CreateDirectory(tempRoot);
@@ -212,35 +234,45 @@ Run("Arena database cleanup removes dependencies and preserves EFT Ref quests", 
                 INSERT INTO Quests VALUES
                     ('arena', 'arena-bsg', 'Arena Task', 'Arena Task', 'Ref', 'Arena', 1),
                     ('fandom_arena', NULL, 'Arena Business', 'Arena Business', 'Ref', NULL, 0),
+                    ('swift-one', '60e729cf5698ee7b05057439', 'Swift One', 'Swift One', 'Jaeger', 'Woods', 1),
                     ('eft-ref', 'eft-bsg', 'Easy Money - Part 1', 'Easy Money - Part 1', 'Ref', 'Customs', 1),
-                    ('after-arena', 'after-bsg', 'After Arena', 'After Arena', 'Prapor', 'Customs', 1);
-                INSERT INTO QuestRequirements VALUES ('after-arena', 'arena'), ('eft-ref', 'after-arena');
-                INSERT INTO QuestObjectives VALUES ('arena'), ('fandom_arena'), ('eft-ref');
+                    ('after-arena', 'after-bsg', 'After Arena', 'After Arena', 'Prapor', 'Customs', 1),
+                    ('after-swift', 'after-swift-bsg', 'After Swift', 'After Swift', 'Jaeger', 'Woods', 1);
+                INSERT INTO QuestRequirements VALUES
+                    ('after-arena', 'arena'), ('eft-ref', 'after-arena'), ('after-swift', 'swift-one');
+                INSERT INTO QuestObjectives VALUES ('arena'), ('fandom_arena'), ('swift-one'), ('eft-ref');
                 INSERT INTO QuestRequiredItems VALUES ('arena'), ('eft-ref');
                 INSERT INTO OptionalQuests VALUES ('arena', 'eft-ref'), ('eft-ref', 'fandom_arena');
-                INSERT INTO ApiMarkers VALUES ('arena-bsg', 'Arena Task'), ('eft-bsg', 'Easy Money - Part 1');";
+                INSERT INTO ApiMarkers VALUES
+                    ('arena-bsg', 'Arena Task'),
+                    ('60e729cf5698ee7b05057439', 'Swift One'),
+                    ('eft-bsg', 'Easy Money - Part 1');";
             schema.ExecuteNonQuery();
         }
 
         using var transaction = connection.BeginTransaction();
-        var removed = ArenaQuestExclusionPolicy.RemoveExcludedRowsAsync(connection, transaction)
+        var removed = QuestExclusionPolicy.RemoveExcludedRowsAsync(connection, transaction)
             .GetAwaiter()
             .GetResult();
         transaction.Commit();
 
-        Assert(removed == 2, "both Arena quest representations must be removed");
+        Assert(removed == 3, "both Arena representations and Swift One must be removed");
         Assert(ScalarCount(connection, "SELECT COUNT(*) FROM Quests WHERE Id='eft-ref'") == 1,
             "the main-game Ref quest must remain");
         Assert(ScalarCount(connection, "SELECT COUNT(*) FROM QuestRequirements WHERE RequiredQuestId='arena'") == 0,
             "incoming prerequisite links to deleted Arena quests must be removed");
-        Assert(ScalarCount(connection, "SELECT COUNT(*) FROM QuestObjectives WHERE QuestId IN ('arena','fandom_arena')") == 0,
-            "Arena objectives must be removed");
+        Assert(ScalarCount(connection, "SELECT COUNT(*) FROM QuestRequirements WHERE RequiredQuestId='swift-one'") == 0,
+            "incoming prerequisite links to deleted Swift One must be removed");
+        Assert(ScalarCount(connection, "SELECT COUNT(*) FROM QuestObjectives WHERE QuestId IN ('arena','fandom_arena','swift-one')") == 0,
+            "excluded quest objectives must be removed");
         Assert(ScalarCount(connection, "SELECT COUNT(*) FROM QuestRequiredItems WHERE QuestId='arena'") == 0,
             "Arena required items must be removed");
         Assert(ScalarCount(connection, "SELECT COUNT(*) FROM OptionalQuests") == 0,
             "both sides of optional Arena links must be removed");
         Assert(ScalarCount(connection, "SELECT COUNT(*) FROM ApiMarkers WHERE QuestBsgId='arena-bsg'") == 0,
             "Arena API markers must be removed");
+        Assert(ScalarCount(connection, "SELECT COUNT(*) FROM ApiMarkers WHERE QuestBsgId='60e729cf5698ee7b05057439'") == 0,
+            "Swift One API markers must be removed");
         Assert(ScalarCount(connection, "SELECT COUNT(*) FROM ApiMarkers WHERE QuestBsgId='eft-bsg'") == 1,
             "main-game API markers must remain");
     }
@@ -251,7 +283,7 @@ Run("Arena database cleanup removes dependencies and preserves EFT Ref quests", 
     }
 });
 
-Run("packaged quest database contains no Arena-only rows or orphaned links", () =>
+Run("packaged quest database contains no excluded rows or orphaned links", () =>
 {
     var databasePath = Path.GetFullPath(Path.Combine("TarkovHelper", "Assets", "tarkov_data.db"));
     Assert(File.Exists(databasePath), $"the packaged quest database must exist: {databasePath}");
@@ -260,19 +292,21 @@ Run("packaged quest database contains no Arena-only rows or orphaned links", () 
     connection.Open();
     using (var command = connection.CreateCommand())
     {
-        command.CommandText = "SELECT Id, BsgId, Trader, Location, IsApproved FROM Quests";
+        command.CommandText = "SELECT Id, BsgId, COALESCE(NameEN, Name, ''), Trader, Location, IsApproved FROM Quests";
         using var reader = command.ExecuteReader();
         var excludedNames = new List<string>();
         while (reader.Read())
         {
             var id = reader.GetString(0);
             var bsgId = reader.IsDBNull(1) ? null : reader.GetString(1);
-            var trader = reader.IsDBNull(2) ? null : reader.GetString(2);
-            var location = reader.IsDBNull(3) ? null : reader.GetString(3);
-            var isApproved = !reader.IsDBNull(4) && reader.GetInt32(4) == 1;
-            if (ArenaQuestExclusionPolicy.IsExcludedStoredQuest(
+            var name = reader.GetString(2);
+            var trader = reader.IsDBNull(3) ? null : reader.GetString(3);
+            var location = reader.IsDBNull(4) ? null : reader.GetString(4);
+            var isApproved = !reader.IsDBNull(5) && reader.GetInt32(5) == 1;
+            if (QuestExclusionPolicy.IsExcludedStoredQuest(
                     id,
                     bsgId,
+                    name,
                     trader,
                     location,
                     isApproved))
@@ -282,7 +316,7 @@ Run("packaged quest database contains no Arena-only rows or orphaned links", () 
         }
 
         Assert(excludedNames.Count == 0,
-            $"the packaged database still contains Arena quests: {string.Join(", ", excludedNames)}");
+            $"the packaged database still contains excluded quests: {string.Join(", ", excludedNames)}");
     }
 
     Assert(ScalarCount(connection,

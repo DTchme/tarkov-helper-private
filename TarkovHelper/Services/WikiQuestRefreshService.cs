@@ -337,12 +337,12 @@ public sealed class WikiQuestRefreshService
 
         try
         {
-            var removedArenaQuestCount = await ArenaQuestExclusionPolicy.RemoveExcludedRowsAsync(
+            var removedExcludedQuestCount = await QuestExclusionPolicy.RemoveExcludedRowsAsync(
                 connection,
                 tx,
                 cancellationToken);
-            if (removedArenaQuestCount > 0)
-                _log.Info($"Removed {removedArenaQuestCount} Arena-only quests before Wiki overlay");
+            if (removedExcludedQuestCount > 0)
+                _log.Info($"Removed {removedExcludedQuestCount} excluded quests before Wiki overlay");
 
             var existing = new Dictionary<string, ExistingQuest>(StringComparer.OrdinalIgnoreCase);
             await using (var cmd = new SqliteCommand(
@@ -359,9 +359,10 @@ public sealed class WikiQuestRefreshService
                     var isApproved = !reader.IsDBNull(4) && reader.GetInt32(4) == 1;
                     var trader = reader.IsDBNull(5) ? null : reader.GetString(5);
                     var location = reader.IsDBNull(6) ? null : reader.GetString(6);
-                    if (ArenaQuestExclusionPolicy.IsExcludedStoredQuest(
+                    if (QuestExclusionPolicy.IsExcludedStoredQuest(
                             id,
                             bsgId,
+                            name,
                             trader,
                             location,
                             isApproved))
@@ -385,12 +386,13 @@ public sealed class WikiQuestRefreshService
                 cancellationToken.ThrowIfCancellationRequested();
                 var key = NormalizeQuestName(row.Name);
                 existing.TryGetValue(key, out var current);
-                if (ArenaQuestExclusionPolicy.IsExcludedWikiQuest(
+                if (QuestExclusionPolicy.IsExcludedWikiQuest(
+                        row.Name,
                         row.Trader,
                         row.Map,
                         current?.IsStructured == true))
                 {
-                    _log.Debug($"Excluded Arena quest from Wiki refresh: {row.Name}");
+                    _log.Debug($"Excluded quest from Wiki refresh: {row.Name}");
                     continue;
                 }
 
