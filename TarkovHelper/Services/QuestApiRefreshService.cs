@@ -682,9 +682,9 @@ public sealed class QuestApiRefreshService
                 var trader = GetNestedString(task, "trader", "name") ?? string.Empty;
                 var wikiLink = GetString(task, "wikiLink");
                 var location = CollectQuestMaps(task);
-                if (ArenaQuestExclusionPolicy.IsArenaLocation(location))
+                if (QuestExclusionPolicy.IsExcludedApiQuest(bsgId, name, location))
                 {
-                    _log.Debug($"Excluded Arena quest from tarkov.dev refresh: {name} ({bsgId})");
+                    _log.Debug($"Excluded quest from tarkov.dev refresh: {name} ({bsgId})");
                     continue;
                 }
 
