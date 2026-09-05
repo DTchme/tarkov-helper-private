@@ -11,14 +11,14 @@ using TarkovHelper.Services.Logging;
 namespace TarkovHelper.Services;
 
 /// <summary>
-/// Rebuilds the quest-related part of tarkov_data.db from the current tarkov.dev GraphQL API.
-/// The regular and PvE datasets are requested separately through the API gameMode argument.
+/// Rebuilds the quest-related part of tarkov_data.db from the supported json.tarkov.dev feed.
+/// The regular and PvE datasets are requested separately through the static game-mode path.
 /// Existing map marker coordinates are retained when the quest BSG id and English objective
 /// description still match.
 /// </summary>
 public sealed class QuestApiRefreshService
 {
-    private const string GraphQlEndpoint = "https://api.tarkov.dev/graphql";
+    private const string StaticDataEndpoint = "https://json.tarkov.dev";
     private const string TrackerQuestEndpoint =
         "https://raw.githubusercontent.com/TarkovTracker/tarkovdata/refs/heads/master/quests.json";
     private const int MinimumExpectedQuestCount = 300;
@@ -61,7 +61,7 @@ public sealed class QuestApiRefreshService
                 var messages = errors.EnumerateArray()
                     .Select(e => GetString(e, "message"))
                     .Where(m => !string.IsNullOrWhiteSpace(m));
-                throw new InvalidOperationException("tarkov.dev GraphQL 오류: " + string.Join(" | ", messages));
+                throw new InvalidOperationException("tarkov.dev 데이터 오류: " + string.Join(" | ", messages));
             }
 
             if (!document.RootElement.TryGetProperty("data", out var data) ||
@@ -141,139 +141,61 @@ public sealed class QuestApiRefreshService
 
     private async Task<string> FetchQuestDataAsync(string mode, CancellationToken cancellationToken)
     {
-        const string query = """
-            query QuestRefresh($mode: GameMode!) {
-              en: tasks(lang: en, gameMode: $mode) {
-                id
-                name
-                normalizedName
-                wikiLink
-                minPlayerLevel
-                kappaRequired
-                factionName
-                availableDelaySecondsMin
-                requiredPrestige { prestigeLevel }
-                trader { name }
-                map { name normalizedName }
-                taskRequirements {
-                  task { id }
-                  status
-                }
-                objectives {
-                  id
-                  type
-                  description
-                  maps { name normalizedName }
-                  optional
-                  ... on TaskObjectiveItem {
-                    items { id name normalizedName }
-                    count
-                    foundInRaid
-                    dogTagLevel
-                  }
-                  ... on TaskObjectiveShoot {
-                    targetNames
-                    count
-                  }
-                  ... on TaskObjectiveExtract {
-                    count
-                  }
-                  ... on TaskObjectiveExperience {
-                    count
-                  }
-                  ... on TaskObjectiveQuestItem {
-                    questItem { id name normalizedName }
-                    count
-                  }
-                  ... on TaskObjectiveUseItem {
-                    useAny { id name normalizedName }
-                    count
-                  }
-                  ... on TaskObjectiveBuildItem {
-                    item { id name normalizedName }
-                  }
-                }
-                failConditions {
-                  id
-                  type
-                  description
-                  ... on TaskObjectiveTaskStatus {
-                    task { id }
-                    status
-                  }
-                }
-              }
-              ko: tasks(lang: ko, gameMode: $mode) { id name }
-              ja: tasks(lang: ja, gameMode: $mode) { id name }
-            }
-            """;
-
-        var requestBody = JsonSerializer.Serialize(new
+        var names = new[]
         {
-            query,
-            variables = new { mode }
-        });
+            "tasks", "tasks_en", "tasks_ko", "tasks_ja",
+            "traders", "traders_en", "maps", "maps_en", "items_en"
+        };
+        var downloads = names.Select(name => FetchStaticJsonAsync(mode, name, cancellationToken)).ToArray();
+        var json = await Task.WhenAll(downloads);
+        return TarkovDevStaticTaskAdapter.Adapt(
+            json[0], json[1], json[2], json[3], json[4], json[5], json[6], json[7], json[8]);
+    }
 
+    private async Task<string> FetchStaticJsonAsync(
+        string mode,
+        string endpoint,
+        CancellationToken cancellationToken)
+    {
         const int maxAttempts = 3;
+        var uri = $"{StaticDataEndpoint}/{mode}/{endpoint}";
         for (var attempt = 1; attempt <= maxAttempts; attempt++)
         {
-            HttpResponseMessage response;
-            string body;
-
             try
             {
-                using var content = new StringContent(requestBody, Encoding.UTF8, "application/json");
-                response = await _httpClient.PostAsync(GraphQlEndpoint, content, cancellationToken);
-                body = await response.Content.ReadAsStringAsync(cancellationToken);
+                using var request = new HttpRequestMessage(HttpMethod.Get, uri);
+                request.Headers.UserAgent.ParseAdd("TarkovHelper/1.5.24");
+                using var response = await _httpClient.SendAsync(request, cancellationToken);
+                var body = await response.Content.ReadAsStringAsync(cancellationToken);
+                if (response.IsSuccessStatusCode)
+                    return body;
+
+                if (!IsTransientHttpFailure(response.StatusCode) || attempt >= maxAttempts)
+                    throw new TarkovDevUnavailableException(
+                        $"tarkov.dev 정적 데이터 요청 실패: {(int)response.StatusCode} {response.ReasonPhrase}. " +
+                        "기존 퀘스트 DB를 유지합니다.");
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 throw;
             }
+            catch (HttpRequestException ex) when (attempt < maxAttempts)
+            {
+                _log.Warning(
+                    $"tarkov.dev static request failed ({endpoint}, attempt {attempt}/{maxAttempts}); retrying. {ex.Message}");
+            }
             catch (HttpRequestException ex)
             {
-                if (attempt >= maxAttempts)
-                {
-                    throw new TarkovDevUnavailableException(
-                        "tarkov.dev에 연결할 수 없습니다. 기존 퀘스트 DB를 유지합니다. 잠시 후 다시 시도하세요.",
-                        ex);
-                }
-
-                _log.Warning(
-                    $"tarkov.dev network request failed (attempt {attempt}/{maxAttempts}); retrying. {ex.Message}");
-                await Task.Delay(GetRetryDelay(attempt), cancellationToken);
-                continue;
-            }
-
-            using (response)
-            {
-                if (response.IsSuccessStatusCode)
-                    return body;
-
-                if (!IsTransientGraphQlFailure(response.StatusCode, body))
-                {
-                    throw new HttpRequestException(
-                        $"tarkov.dev 요청 실패: {(int)response.StatusCode} {response.ReasonPhrase}\n{body}");
-                }
-
-                if (attempt >= maxAttempts)
-                {
-                    throw new TarkovDevUnavailableException(
-                        $"tarkov.dev GraphQL 서버가 일시적으로 사용할 수 없습니다 " +
-                        $"({(int)response.StatusCode} {response.ReasonPhrase}). " +
-                        "기존 퀘스트 DB를 유지합니다. 잠시 후 다시 시도하세요.");
-                }
-
-                _log.Warning(
-                    $"tarkov.dev GraphQL server unavailable " +
-                    $"(attempt {attempt}/{maxAttempts}, {(int)response.StatusCode}); retrying.");
+                throw new TarkovDevUnavailableException(
+                    "tarkov.dev에 연결할 수 없습니다. 기존 퀘스트 DB를 유지합니다. 잠시 후 다시 시도하세요.",
+                    ex);
             }
 
             await Task.Delay(GetRetryDelay(attempt), cancellationToken);
         }
 
         throw new TarkovDevUnavailableException(
-            "tarkov.dev GraphQL 서버가 일시적으로 사용할 수 없습니다. 기존 퀘스트 DB를 유지합니다.");
+            "tarkov.dev 정적 데이터를 가져올 수 없습니다. 기존 퀘스트 DB를 유지합니다.");
     }
 
     private static TimeSpan GetRetryDelay(int attempt)
@@ -285,19 +207,10 @@ public sealed class QuestApiRefreshService
         };
     }
 
-    private static bool IsTransientGraphQlFailure(
-        System.Net.HttpStatusCode statusCode,
-        string responseBody)
+    private static bool IsTransientHttpFailure(System.Net.HttpStatusCode statusCode)
     {
         var numericStatus = (int)statusCode;
-        if (numericStatus is 408 or 425 or 429 or 500 or 502 or 503 or 504)
-            return true;
-
-        // tarkov.dev may return HTTP 422 while its GraphQL backend is temporarily unavailable.
-        // Treat only explicit outage wording as transient so real query/schema errors remain visible.
-        return responseBody.Contains("GraphQL server unavailable", StringComparison.OrdinalIgnoreCase) ||
-               responseBody.Contains("server unavailable", StringComparison.OrdinalIgnoreCase) ||
-               responseBody.Contains("try again later", StringComparison.OrdinalIgnoreCase);
+        return numericStatus is 408 or 425 or 429 or 500 or 502 or 503 or 504;
     }
 
 
@@ -812,6 +725,14 @@ public sealed class QuestApiRefreshService
                         var targetNames = ReadStringArray(objective, "targetNames");
                         var targetType = targetNames.Count > 0 ? string.Join(", ", targetNames) : null;
                         var isOptional = GetBool(objective, "optional");
+
+                        // The helper has no separate optional-objective completion state. Showing
+                        // these as normal rows makes optional acquisition hints look mandatory and
+                        // causes the detail list to disagree with the English Wiki. Keep them in
+                        // the adapted source for validation, but omit them from the user-facing DB.
+                        if (isOptional)
+                            continue;
+
                         var mapName = FirstMapName(objective) ?? existingObjective?.MapName;
                         var hasRefreshedCoordinates = coordinateAssignments.TryGetValue(
                             apiObjectiveId,
@@ -1198,6 +1119,9 @@ public sealed class QuestApiRefreshService
         {
             foreach (var objective in objectives.EnumerateArray())
             {
+                var inferred = InferMapName(GetString(objective, "description"));
+                if (!string.IsNullOrWhiteSpace(inferred)) maps.Add(inferred);
+
                 if (!objective.TryGetProperty("maps", out var objectiveMaps) ||
                     objectiveMaps.ValueKind != JsonValueKind.Array)
                     continue;
@@ -1215,13 +1139,33 @@ public sealed class QuestApiRefreshService
 
     private static string? FirstMapName(JsonElement objective)
     {
-        if (!objective.TryGetProperty("maps", out var maps) || maps.ValueKind != JsonValueKind.Array)
-            return null;
-        foreach (var map in maps.EnumerateArray())
+        if (objective.TryGetProperty("maps", out var maps) && maps.ValueKind == JsonValueKind.Array)
         {
-            var mapped = MapName(map);
-            if (!string.IsNullOrWhiteSpace(mapped)) return mapped;
+            foreach (var map in maps.EnumerateArray())
+            {
+                var mapped = MapName(map);
+                if (!string.IsNullOrWhiteSpace(mapped)) return mapped;
+            }
         }
+
+        return InferMapName(GetString(objective, "description"));
+    }
+
+    private static string? InferMapName(string? description)
+    {
+        if (string.IsNullOrWhiteSpace(description)) return null;
+        var value = description.ToLowerInvariant();
+        if (value.Contains("ground zero")) return "GroundZero";
+        if (value.Contains("streets of tarkov")) return "StreetsOfTarkov";
+        if (value.Contains("the lab") || value.Contains("laboratory")) return "Labs";
+        if (value.Contains("customs")) return "Customs";
+        if (value.Contains("factory")) return "Factory";
+        if (value.Contains("interchange")) return "Interchange";
+        if (value.Contains("labyrinth")) return "Labyrinth";
+        if (value.Contains("lighthouse")) return "Lighthouse";
+        if (value.Contains("reserve")) return "Reserve";
+        if (value.Contains("shoreline")) return "Shoreline";
+        if (value.Contains("woods")) return "Woods";
         return null;
     }
 
@@ -1286,6 +1230,7 @@ public sealed class QuestApiRefreshService
     {
         var value = apiType.ToLowerInvariant();
         if (value.Contains("shoot") || value.Contains("kill")) return "Kill";
+        if (value.Contains("plant")) return "Stash";
         if (value.Contains("item")) return description.Contains("hand over", StringComparison.OrdinalIgnoreCase)
             ? "HandOver" : "Collect";
         if (value.Contains("mark")) return "Mark";
