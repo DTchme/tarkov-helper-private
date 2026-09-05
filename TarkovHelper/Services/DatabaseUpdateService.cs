@@ -181,7 +181,9 @@ public sealed class DatabaseUpdateService : IDisposable
                 _log.Warning(apiWarning);
             }
 
-            // Wiki is authoritative for current quest presence/basic quest information.
+            // The English Wiki is authoritative for current quest presence and basic text.
+            // Supported json.tarkov.dev data remains authoritative for typed objectives,
+            // optional flags, item IDs and prerequisite relationships.
             var wikiService = new WikiQuestRefreshService(_httpClient);
             var wiki = await wikiService.RefreshAsync(_databasePath);
 
@@ -191,12 +193,12 @@ public sealed class DatabaseUpdateService : IDisposable
             OnDatabaseUpdated();
 
             var apiPart = apiRefresh is null
-                ? "tarkov.dev 보조 데이터 없음"
-                : $"tarkov.dev 구조화 퀘스트 {apiRefresh.QuestCount}";
+                ? "구조화 목표 데이터 없음"
+                : $"구조화 퀘스트 {apiRefresh.QuestCount}";
             var message =
-                $"Wiki 기준 퀘스트 갱신 완료 ({ProfileService.Instance.GetProfileName(profileType)}): Wiki {wiki.WikiQuestCount}, " +
-                $"신규 {wiki.AddedQuestCount}, 정보 갱신 {wiki.UpdatedQuestCount}, " +
-                $"빈 목표 보완 {wiki.ObjectivesFilledCount} / {apiPart}";
+                $"퀘스트 갱신 완료 ({ProfileService.Instance.GetProfileName(profileType)}): {apiPart}, " +
+                $"영문 Wiki 목록 {wiki.WikiQuestCount}, 신규 {wiki.AddedQuestCount}, " +
+                $"기본 정보 갱신 {wiki.UpdatedQuestCount}, Wiki 빈 목표 보완 {wiki.ObjectivesFilledCount}";
             if (!string.IsNullOrWhiteSpace(apiWarning))
                 message += $" (참고: {apiWarning})";
 

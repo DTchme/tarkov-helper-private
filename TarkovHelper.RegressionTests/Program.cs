@@ -8,6 +8,43 @@ using TarkovHelper.Services.Map;
 var failures = new List<string>();
 
 if (args.Length == 2 &&
+    args[0].Equals("--validate-static-feed", StringComparison.OrdinalIgnoreCase))
+{
+    var directory = args[1];
+    string Read(string name) => File.ReadAllText(Path.Combine(directory, name + ".json"));
+    var adapted = TarkovDevStaticTaskAdapter.Adapt(
+        Read("tasks"), Read("tasks_en"), Read("tasks_ko"), Read("tasks_ja"),
+        Read("traders"), Read("traders_en"), Read("maps"), Read("maps_en"), Read("items_en"));
+    using var document = System.Text.Json.JsonDocument.Parse(adapted);
+    var tasks = document.RootElement.GetProperty("data").GetProperty("en");
+    var supervisor = tasks.EnumerateArray().Single(task =>
+        task.GetProperty("id").GetString() == "5ae449d986f774453a54a7e1");
+    var objectiveCount = supervisor.GetProperty("objectives").GetArrayLength();
+    if (objectiveCount != 6)
+        throw new InvalidOperationException($"Expected 6 current Supervisor objectives, got {objectiveCount}.");
+    Console.WriteLine(
+        $"Validated {tasks.GetArrayLength()} live tasks; Supervisor has {objectiveCount} current objectives.");
+    return 0;
+}
+
+if (args.Length == 3 &&
+    args[0].Equals("--refresh-quest-data", StringComparison.OrdinalIgnoreCase))
+{
+    var profile = args[1].Equals("pve", StringComparison.OrdinalIgnoreCase)
+        ? ProfileType.Pve
+        : ProfileType.Pvp;
+    using var httpClient = new HttpClient { Timeout = TimeSpan.FromMinutes(2) };
+    var result = new QuestApiRefreshService(httpClient)
+        .RefreshAsync(profile, args[2])
+        .GetAwaiter()
+        .GetResult();
+    Console.WriteLine(
+        $"Refreshed {result.QuestCount} quests and {result.ObjectiveCount} objectives " +
+        $"from json.tarkov.dev ({result.GameMode}). Backup: {result.BackupPath}");
+    return 0;
+}
+
+if (args.Length == 2 &&
     (args[0].Equals("--remove-excluded-quests", StringComparison.OrdinalIgnoreCase) ||
      args[0].Equals("--remove-arena-quests", StringComparison.OrdinalIgnoreCase)))
 {
@@ -27,6 +64,44 @@ if (args.Length == 2 &&
     Console.WriteLine($"Removed {removed} excluded quests from {databasePath}");
     return 0;
 }
+
+Run("supported static tarkov.dev feed preserves current Supervisor objectives", () =>
+{
+    const string taskId = "5ae449d986f774453a54a7e1";
+    const string traderId = "5ac3b934156ae10c4430e83c";
+    const string mapId = "5714dbc024597771384a510d";
+    const string itemId = "5ad7247386f7747487619dc3";
+    const string stashObjectiveId = "6a60aab8ada1a08abcaa3649";
+    const string findObjectiveId = "5ae9e55886f77445315f662a";
+
+    var adapted = TarkovDevStaticTaskAdapter.Adapt(
+        $$$$$"""
+        {"data":{"tasks":{"{{{{{taskId}}}}}":{"id":"{{{{{taskId}}}}}","name":"{{{{{taskId}}}}} name","trader":"{{{{{traderId}}}}}","map":"{{{{{mapId}}}}}","wikiLink":"https://escapefromtarkov.fandom.com/wiki/Supervisor","minPlayerLevel":0,"kappaRequired":false,"taskRequirements":[],"objectives":[{"id":"{{{{{stashObjectiveId}}}}}","description":"{{{{{stashObjectiveId}}}}}","type":"plantItem","count":1,"optional":false,"items":["{{{{{itemId}}}}}"],"maps":["{{{{{mapId}}}}}"]},{"id":"{{{{{findObjectiveId}}}}}","description":"{{{{{findObjectiveId}}}}}","type":"findItem","count":1,"optional":true,"items":["{{{{{itemId}}}}}"],"maps":[]}],"failConditions":[],"normalizedName":"supervisor","factionName":"Any"}}}}
+        """,
+        $$$$$"""{"data":{"{{{{{taskId}}}}} name":"Supervisor","{{{{{stashObjectiveId}}}}}":"Stash the Goshan cash register key at the BIZARRO store fitting rooms on Interchange","{{{{{findObjectiveId}}}}}":"Obtain the Goshan cash register key"}}""",
+        $$$$$"""{"data":{"{{{{{taskId}}}}} name":"감독관"}}""",
+        $$$$$"""{"data":{"{{{{{taskId}}}}} name":"監督者"}}""",
+        $$$$$"""{"data":{"{{{{{traderId}}}}}":{"id":"{{{{{traderId}}}}}","name":"{{{{{traderId}}}}} Nickname","normalizedName":"ragman"}}}""",
+        $$$$$"""{"data":{"{{{{{traderId}}}}} Nickname":"Ragman"}}""",
+        $$$$$"""{"data":{"maps":{"{{{{{mapId}}}}}":{"id":"{{{{{mapId}}}}}","name":"{{{{{mapId}}}}} Name","normalizedName":"interchange"}}}}""",
+        $$$$$"""{"data":{"{{{{{mapId}}}}} Name":"Interchange"}}""",
+        $$$$$"""{"data":{"{{{{{itemId}}}}} Name":"Goshan cash register key"}}"""
+    );
+
+    using var document = System.Text.Json.JsonDocument.Parse(adapted);
+    var data = document.RootElement.GetProperty("data");
+    var task = data.GetProperty("en")[0];
+    Assert(task.GetProperty("name").GetString() == "Supervisor", "Supervisor name must be translated");
+    Assert(task.GetProperty("trader").GetProperty("name").GetString() == "Ragman", "trader ID must be resolved");
+    Assert(task.GetProperty("map").GetProperty("name").GetString() == "Interchange", "map ID must be resolved");
+    var objectives = task.GetProperty("objectives");
+    Assert(objectives.GetArrayLength() == 2, "mandatory and optional objectives must both survive adaptation");
+    Assert(objectives[0].GetProperty("description").GetString()!.Contains("BIZARRO"), "current stash objective must be translated");
+    Assert(!objectives[0].GetProperty("optional").GetBoolean(), "Wiki-listed stash objective must be mandatory");
+    Assert(objectives[1].GetProperty("optional").GetBoolean(), "key acquisition helper objective must stay optional");
+    Assert(objectives[0].GetProperty("items")[0].GetProperty("name").GetString() == "Goshan cash register key", "item ID must be resolved");
+    Assert(data.GetProperty("ko")[0].GetProperty("name").GetString() == "감독관", "Korean quest name must be retained");
+});
 
 Run("startup initialization applies the complete database schema", () =>
 {
@@ -322,6 +397,33 @@ Run("packaged quest database contains no excluded rows or orphaned links", () =>
     Assert(ScalarCount(connection,
             "SELECT COUNT(*) FROM Quests WHERE NameEN='Provide Viewership' AND Trader='Ref' AND Location='Customs'") == 1,
         "the EFT Customs quest Provide Viewership must remain packaged");
+    Assert(ScalarCount(connection, @"
+            SELECT COUNT(*)
+            FROM QuestObjectives objective
+            JOIN Quests quest ON quest.Id=objective.QuestId
+            WHERE quest.BsgId='5ae449d986f774453a54a7e1'") == 3,
+        "packaged Supervisor must contain exactly the three current Wiki stash goals");
+    Assert(ScalarCount(connection, @"
+            SELECT COUNT(*)
+            FROM QuestObjectives objective
+            JOIN Quests quest ON quest.Id=objective.QuestId
+            WHERE quest.BsgId='5ae449d986f774453a54a7e1'
+              AND objective.ObjectiveType='Stash'
+              AND objective.MapName='Interchange'") == 3,
+        "the three Wiki-listed Supervisor goals must be Interchange stash objectives");
+    Assert(ScalarCount(connection, @"
+            SELECT COUNT(*)
+            FROM QuestRequiredItems item
+            JOIN Quests quest ON quest.Id=item.QuestId
+            WHERE quest.BsgId='5ae449d986f774453a54a7e1'") == 3,
+        "Supervisor must require exactly the three keys used by its Wiki objectives");
+    Assert(ScalarCount(connection, @"
+            SELECT COUNT(*)
+            FROM QuestObjectives objective
+            JOIN Quests quest ON quest.Id=objective.QuestId
+            WHERE quest.BsgId='5ae449d986f774453a54a7e1'
+              AND objective.Description LIKE 'Hand over%'") == 0,
+        "the obsolete Supervisor hand-over objective must not remain");
     Assert(ScalarCount(connection, @"
             SELECT COUNT(*)
             FROM QuestRequirements requirement
