@@ -435,8 +435,8 @@ public partial class MainWindow : Window
         // 업데이트 완료 이벤트 구독 (UI 새로고침용)
         dbUpdateService.DatabaseUpdated += OnDatabaseUpdated;
 
-        // 백그라운드 업데이트 체크 시작 (5분마다)
-        // dbUpdateService.StartBackgroundUpdates();
+        // 앱 시작 2분 후, 이후 6시간마다 영문 Wiki 변경 확인
+        dbUpdateService.StartBackgroundUpdates();
 
         _log.Info("Database update service started");
     }
