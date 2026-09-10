@@ -1,1 +1,1 @@
-1.5.24-static-tasks-supervisor
+1.5.25-english-wiki-authoritative

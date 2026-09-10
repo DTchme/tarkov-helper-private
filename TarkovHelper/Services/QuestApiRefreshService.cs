@@ -164,7 +164,7 @@ public sealed class QuestApiRefreshService
             try
             {
                 using var request = new HttpRequestMessage(HttpMethod.Get, uri);
-                request.Headers.UserAgent.ParseAdd("TarkovHelper/1.5.24");
+                request.Headers.UserAgent.ParseAdd("TarkovHelper/1.5.25");
                 using var response = await _httpClient.SendAsync(request, cancellationToken);
                 var body = await response.Content.ReadAsStringAsync(cancellationToken);
                 if (response.IsSuccessStatusCode)
@@ -707,6 +707,7 @@ public sealed class QuestApiRefreshService
                     var coordinateAssignments = BuildCoordinateAssignments(task, coordinateCatalog);
                     ApplyKnownCoordinateCorrections(task, coordinateAssignments);
                     var sortOrder = 0;
+                    var usedObjectiveIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                     foreach (var objective in objectives.EnumerateArray())
                     {
                         var description = GetString(objective, "description")?.Trim();
@@ -719,6 +720,12 @@ public sealed class QuestApiRefreshService
 
                         var objectiveId = existingObjective?.Id
                             ?? StableId("obj", questBsgId, apiObjectiveId);
+                        if (!usedObjectiveIds.Add(objectiveId))
+                        {
+                            objectiveId = StableId(
+                                "obj", questBsgId, apiObjectiveId, sortOrder.ToString());
+                            usedObjectiveIds.Add(objectiveId);
+                        }
                         var apiType = GetString(objective, "type") ?? "custom";
                         var objectiveType = MapObjectiveType(apiType, description);
                         var count = GetNullableInt(objective, "count");
@@ -805,7 +812,7 @@ public sealed class QuestApiRefreshService
 
                                 var itemCount = count.GetValueOrDefault(1);
                                 var requiredItemRowId = StableId(
-                                    "item", questBsgId, apiObjectiveId, itemBsgId ?? itemName, itemSortOrder.ToString());
+                                    "item", questBsgId, objectiveId, itemBsgId ?? itemName, itemSortOrder.ToString());
 
                                 await using var itemCommand = new SqliteCommand(@"
                                     INSERT INTO QuestRequiredItems (

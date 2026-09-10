@@ -8,8 +8,7 @@ namespace TarkovHelper.Services;
 
 /// <summary>
 /// tarkov_data.db 업데이트를 관리하는 서비스.
-/// GitHub에서 버전을 확인하고 새 버전이 있으면 자동으로 다운로드.
-/// 5분마다 백그라운드에서 업데이트 체크.
+/// 영문 Wiki의 개별 퀘스트 페이지를 기준으로 변경된 데이터만 갱신한다.
 /// </summary>
 public sealed class DatabaseUpdateService : IDisposable
 {
@@ -22,7 +21,8 @@ public sealed class DatabaseUpdateService : IDisposable
     private const string DATABASE_URL = "https://raw.githubusercontent.com/Zeliper/Tarkov-Item-Helper/refs/heads/main/TarkovHelper/Assets/tarkov_data.db";
     private const string LOCAL_VERSION_FILE = "db_version.txt";
     private const string DATABASE_FILE = "tarkov_data.db";
-    private const int UPDATE_INTERVAL_MS = 30 * 60 * 1000; // Wiki/API 보호를 위해 30분
+    private const int INITIAL_UPDATE_DELAY_MS = 2 * 60 * 1000;
+    private const int UPDATE_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
     private readonly string _assetsPath;
     private readonly string _databasePath;
@@ -83,7 +83,7 @@ public sealed class DatabaseUpdateService : IDisposable
         // 로컬 버전 로드
         LoadLocalVersion();
 
-        // 5분마다 업데이트 체크 타이머 설정
+        // 시작 지연 후 6시간마다 Wiki 변경 확인
         _updateTimer = new System.Threading.Timer(
             OnUpdateTimerElapsed,
             null,
@@ -121,8 +121,8 @@ public sealed class DatabaseUpdateService : IDisposable
     /// </summary>
     public void StartBackgroundUpdates()
     {
-        _log.Info("Starting background update checks (every 30 minutes)");
-        _updateTimer.Change(0, UPDATE_INTERVAL_MS); // 즉시 시작 후 30분마다 반복
+        _log.Info("Starting English Wiki quest checks (initial delay 2 minutes, every 6 hours)");
+        _updateTimer.Change(INITIAL_UPDATE_DELAY_MS, UPDATE_INTERVAL_MS);
     }
 
     /// <summary>
@@ -156,53 +156,28 @@ public sealed class DatabaseUpdateService : IDisposable
         try
         {
             var profileType = ProfileService.Instance.CurrentProfile;
-            QuestApiRefreshResult? apiRefresh = null;
-            string? apiWarning = null;
 
-            // tarkov.dev is now a best-effort structured-data source. If it is unavailable,
-            // continue with the Wiki overlay instead of aborting the whole refresh.
-            try
-            {
-                var apiService = new QuestApiRefreshService(_httpClient);
-                apiRefresh = await apiService.RefreshAsync(profileType, _databasePath);
-            }
-            catch (TarkovDevUnavailableException ex)
-            {
-                apiWarning = ex.Message;
-                _log.Warning($"tarkov.dev structured quest refresh skipped: {ex.Message}");
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                apiWarning = $"tarkov.dev 보조 갱신을 건너뜀: {ex.Message}";
-                _log.Warning(apiWarning);
-            }
-
-            // The English Wiki is authoritative for current quest presence and basic text.
-            // Supported json.tarkov.dev data remains authoritative for typed objectives,
-            // optional flags, item IDs and prerequisite relationships.
+            // The English Wiki is authoritative. Existing structured rows are retained
+            // only when they can supplement Wiki objectives with IDs/coordinates.
             var wikiService = new WikiQuestRefreshService(_httpClient);
             var wiki = await wikiService.RefreshAsync(_databasePath);
 
-            var version = $"wiki-{DateTime.UtcNow:yyyyMMddTHHmmssZ}";
-            RemoteVersion = version;
-            await UpdateLocalVersionAsync(version);
-            OnDatabaseUpdated();
+            if (wiki.WasChanged)
+            {
+                var version = $"wiki-{DateTime.UtcNow:yyyyMMddTHHmmssZ}";
+                RemoteVersion = version;
+                await UpdateLocalVersionAsync(version);
+                OnDatabaseUpdated();
+            }
 
-            var apiPart = apiRefresh is null
-                ? "구조화 목표 데이터 없음"
-                : $"구조화 퀘스트 {apiRefresh.QuestCount}";
-            var message =
-                $"퀘스트 갱신 완료 ({ProfileService.Instance.GetProfileName(profileType)}): {apiPart}, " +
-                $"영문 Wiki 목록 {wiki.WikiQuestCount}, 신규 {wiki.AddedQuestCount}, " +
-                $"기본 정보 갱신 {wiki.UpdatedQuestCount}, Wiki 빈 목표 보완 {wiki.ObjectivesFilledCount}";
-            if (!string.IsNullOrWhiteSpace(apiWarning))
-                message += $" (참고: {apiWarning})";
+            var message = wiki.WasChanged
+                ? $"Wiki 기준 퀘스트 갱신 완료 ({ProfileService.Instance.GetProfileName(profileType)}): " +
+                  $"영문 Wiki 목록 {wiki.WikiQuestCount}, 신규 {wiki.AddedQuestCount}, " +
+                  $"개별 페이지 {wiki.IndividualPageCount}, 목표 {wiki.ObjectivesFilledCount}, " +
+                  $"선행 조건 {wiki.PrerequisiteCount}"
+                : "영문 Wiki 퀘스트 데이터가 이미 최신입니다";
 
-            var result = new UpdateCheckResult(true, true, message, isWarning: apiRefresh is null);
+            var result = new UpdateCheckResult(true, wiki.WasChanged, message);
             UpdateCheckCompleted?.Invoke(this, result);
             return result;
         }

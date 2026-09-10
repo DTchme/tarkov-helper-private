@@ -45,6 +45,146 @@ if (args.Length == 3 &&
 }
 
 if (args.Length == 2 &&
+    args[0].Equals("--refresh-wiki-quest-data", StringComparison.OrdinalIgnoreCase))
+{
+    using var httpClient = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
+    var result = new WikiQuestRefreshService(httpClient)
+        .RefreshAsync(args[1])
+        .GetAwaiter()
+        .GetResult();
+    Console.WriteLine(
+        $"Refreshed {result.WikiQuestCount} Wiki quests from {result.IndividualPageCount} " +
+        $"changed individual pages; added {result.AddedQuestCount}, replaced " +
+        $"{result.ObjectivesFilledCount} objectives and {result.PrerequisiteCount} prerequisites. " +
+        $"Backup: {result.BackupPath}");
+    return 0;
+}
+
+if (args.Length == 2 &&
+    args[0].Equals("--validate-wiki-lighthouse-data", StringComparison.OrdinalIgnoreCase))
+{
+    using var connection = new SqliteConnection($"Data Source={args[1]};Mode=ReadOnly");
+    connection.Open();
+    var expected = new Dictionary<string, (int Objectives, string? Previous, string Trader, string Location)>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Fog of War"] = (3, null, "Prapor", "Lighthouse"),
+        ["Number Temporarily Unavailable"] = (3, "Fog of War", "Prapor", "Lighthouse"),
+        ["All-Inclusive Support"] = (3, "Number Temporarily Unavailable", "Prapor", "Lighthouse"),
+        ["Invasive Therapy"] = (5, null, "Therapist", "Lighthouse"),
+        ["To the Light - The Other Side"] = (3, "To the Light - A Time to Gather Stones", "Mechanic", "Reserve"),
+        ["To the Light - Getting Acquainted"] = (4, "To the Light - The Other Side", "Mechanic", "Lighthouse")
+    };
+
+    foreach (var item in expected)
+    {
+        using var quest = connection.CreateCommand();
+        quest.CommandText = @"
+            SELECT q.Id, q.Trader, q.Location,
+                   (SELECT COUNT(*) FROM QuestObjectives o WHERE o.QuestId=q.Id)
+            FROM Quests q
+            WHERE lower(COALESCE(NULLIF(q.NameEN, ''), q.Name))=lower(@name)
+            LIMIT 1";
+        quest.Parameters.AddWithValue("@name", item.Key);
+        using var reader = quest.ExecuteReader();
+        if (!reader.Read())
+            throw new InvalidOperationException($"Missing Wiki quest: {item.Key}");
+        var questId = reader.GetString(0);
+        var trader = reader.IsDBNull(1) ? string.Empty : reader.GetString(1);
+        var location = reader.IsDBNull(2) ? string.Empty : reader.GetString(2);
+        var objectiveCount = reader.GetInt32(3);
+        if (objectiveCount != item.Value.Objectives)
+            throw new InvalidOperationException(
+                $"{item.Key}: expected {item.Value.Objectives} objectives, got {objectiveCount}.");
+        if (!trader.Equals(item.Value.Trader, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException(
+                $"{item.Key}: expected trader {item.Value.Trader}, got {trader}.");
+        if (!location.Contains(item.Value.Location, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException(
+                $"{item.Key}: expected location containing {item.Value.Location}, got {location}.");
+
+        if (item.Value.Previous != null)
+        {
+            using var prerequisite = connection.CreateCommand();
+            prerequisite.CommandText = @"
+                SELECT COUNT(*)
+                FROM QuestRequirements r
+                JOIN Quests p ON p.Id=r.RequiredQuestId
+                WHERE r.QuestId=@id
+                  AND lower(COALESCE(NULLIF(p.NameEN, ''), p.Name))=lower(@previous)
+                  AND lower(r.RequirementType)='complete'";
+            prerequisite.Parameters.AddWithValue("@id", questId);
+            prerequisite.Parameters.AddWithValue("@previous", item.Value.Previous);
+            if (Convert.ToInt32(prerequisite.ExecuteScalar()) != 1)
+                throw new InvalidOperationException(
+                    $"{item.Key}: missing prerequisite {item.Value.Previous}.");
+        }
+
+        Console.WriteLine($"Validated {item.Key}: {trader}, {location}, objectives={objectiveCount}");
+    }
+
+    var newQuestPages = new[]
+    {
+        "A Familiar Face...",
+        "Pay the Fare!",
+        "Price for Information",
+        "In the Name of Humanity...",
+        "To the Light - False Call",
+        "To the Light - Trust but Verify",
+        "To the Light - Clip Their Wings",
+        "To the Light - Dangerous Ambitions",
+        "To the Light - Fallen Bird",
+        "To the Light - Bite the Dust",
+        "To the Light - A time to Throw Stones",
+        "To the Light - A Time to Gather Stones",
+        "...for the Good of the Chosen"
+    };
+    foreach (var questName in newQuestPages)
+    {
+        using var present = connection.CreateCommand();
+        present.CommandText = @"
+            SELECT COUNT(*) FROM Quests
+            WHERE lower(COALESCE(NULLIF(NameEN, ''), Name))=lower(@name)";
+        present.Parameters.AddWithValue("@name", questName);
+        if (Convert.ToInt32(present.ExecuteScalar()) != 1)
+        {
+            using var similar = connection.CreateCommand();
+            similar.CommandText = @"
+                SELECT group_concat(COALESCE(NULLIF(NameEN, ''), Name), ' | ')
+                FROM Quests
+                WHERE lower(COALESCE(NULLIF(NameEN, ''), Name)) LIKE '%throw%stones%'";
+            var similarNames = similar.ExecuteScalar()?.ToString() ?? "none";
+            throw new InvalidOperationException(
+                $"Missing new English Wiki quest: {questName}. Similar rows: {similarNames}");
+        }
+    }
+
+    using (var excluded = connection.CreateCommand())
+    {
+        excluded.CommandText = @"
+            SELECT COUNT(*) FROM Quests
+            WHERE lower(replace(replace(COALESCE(NULLIF(NameEN, ''), Name), ' ', ''), '-', ''))='swiftone'
+               OR lower(COALESCE(Location, ''))='arena'";
+        if (Convert.ToInt32(excluded.ExecuteScalar()) != 0)
+            throw new InvalidOperationException("Excluded Swift One or Arena quests reappeared after Wiki refresh.");
+    }
+
+    using (var coordinates = connection.CreateCommand())
+    {
+        coordinates.CommandText = @"
+            SELECT COUNT(*) FROM QuestObjectives
+            WHERE NULLIF(LocationPoints, '') IS NOT NULL
+               OR NULLIF(OptionalPoints, '') IS NOT NULL";
+        var coordinateCount = Convert.ToInt32(coordinates.ExecuteScalar());
+        if (coordinateCount == 0)
+            throw new InvalidOperationException("Wiki refresh erased every supplemental map coordinate.");
+        Console.WriteLine($"Preserved supplemental coordinates on {coordinateCount} objectives.");
+    }
+
+    Console.WriteLine("English Wiki Lighthouse quest validation passed.");
+    return 0;
+}
+
+if (args.Length == 2 &&
     (args[0].Equals("--remove-excluded-quests", StringComparison.OrdinalIgnoreCase) ||
      args[0].Equals("--remove-arena-quests", StringComparison.OrdinalIgnoreCase)))
 {
