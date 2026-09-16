@@ -37,7 +37,6 @@
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
                     <!-- Trader Icon Placeholder -->
@@ -60,18 +59,8 @@
                                    TextTrimming="CharacterEllipsis"/>
                     </StackPanel>
 
-                    <!-- Game-log identity warning for Wiki-only quests -->
-                    <Border Grid.Column="2" Padding="4,2" CornerRadius="3"
-                            Background="#F57C00"
-                            VerticalAlignment="Center" Margin="0,0,6,0"
-                            Visibility="{Binding LogSyncWarningVisibility}"
-                            ToolTip="{Binding LogSyncToolTip}">
-                        <TextBlock Text="LOG?" FontSize="{DynamicResource FontSizeTiny}"
-                                   Foreground="White" FontWeight="Bold"/>
-                    </Border>
-
                     <!-- Status Badge -->
-                    <Border Grid.Column="3" Padding="8,3" CornerRadius="3"
+                    <Border Grid.Column="2" Padding="8,3" CornerRadius="3"
                             Background="{Binding StatusBackground}"
                             VerticalAlignment="Center" Margin="0,0,8,0"
                             ToolTip="{Binding StatusToolTip}">
@@ -80,7 +69,7 @@
                     </Border>
 
                     <!-- Complete Button -->
-                    <Button Grid.Column="4" Content="완료" Padding="8,4"
+                    <Button Grid.Column="3" Content="완료" Padding="8,4"
                             FontSize="{DynamicResource FontSizeTiny}" MinWidth="50"
                             Click="CompleteButton_Click"
                             Tag="{Binding}"
@@ -370,6 +359,28 @@
                                                Foreground="White" FontWeight="SemiBold"/>
                                 </Border>
                             </StackPanel>
+
+                            <!-- Only show game-log identity limitations in quest details. -->
+                            <Border x:Name="LogSyncNotice"
+                                    Background="#33212121"
+                                    BorderBrush="#F57C00"
+                                    BorderThickness="1"
+                                    CornerRadius="4"
+                                    Padding="10,8"
+                                    Margin="0,0,0,12"
+                                    Visibility="Collapsed">
+                                <StackPanel>
+                                    <TextBlock Text="로그 자동 동기화 미확인"
+                                               FontSize="{DynamicResource FontSizeXSmall}"
+                                               FontWeight="SemiBold"
+                                               Foreground="#FFB74D"
+                                               Margin="0,0,0,3"/>
+                                    <TextBlock Text="게임 로그의 내부 퀘스트 ID가 아직 확인되지 않아 진행 상태가 자동으로 반영되지 않을 수 있습니다. 필요하면 상태를 직접 변경하세요."
+                                               FontSize="{DynamicResource FontSizeTiny}"
+                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                               TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </Border>
 
                             <!-- Map -->
                             <StackPanel x:Name="MapInfoPanel" Orientation="Horizontal" Margin="0,0,0,16">
