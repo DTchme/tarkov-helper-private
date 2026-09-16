@@ -55,7 +55,8 @@ if (args.Length == 2 &&
     Console.WriteLine(
         $"Refreshed {result.WikiQuestCount} Wiki quests from {result.IndividualPageCount} " +
         $"changed individual pages; added {result.AddedQuestCount}, replaced " +
-        $"{result.ObjectivesFilledCount} objectives and {result.PrerequisiteCount} prerequisites. " +
+        $"{result.ObjectivesFilledCount} objectives, {result.PrerequisiteCount} prerequisites, " +
+        $"and {result.RequiredItemCount} required items. " +
         $"Backup: {result.BackupPath}");
     return 0;
 }
@@ -241,6 +242,59 @@ Run("supported static tarkov.dev feed preserves current Supervisor objectives", 
     Assert(objectives[1].GetProperty("optional").GetBoolean(), "key acquisition helper objective must stay optional");
     Assert(objectives[0].GetProperty("items")[0].GetProperty("name").GetString() == "Goshan cash register key", "item ID must be resolved");
     Assert(data.GetProperty("ko")[0].GetProperty("name").GetString() == "감독관", "Korean quest name must be retained");
+});
+
+Run("English Wiki metadata preserves OR prerequisites and uncertain requirements", () =>
+{
+    var prerequisites = WikiQuestMetadataParser.ParsePrerequisites(
+        "[[First Path]]<br/>or<br/>[[Second Path]] and [[Shared Gate]]",
+        "Current Quest");
+    Assert(prerequisites.IsResolved, "plain linked prerequisites must be fully resolved");
+    Assert(prerequisites.Prerequisites.Count == 3, "all prerequisite links must be retained");
+    Assert(prerequisites.Prerequisites[0].GroupId > 0, "the first OR option must have a group ID");
+    Assert(prerequisites.Prerequisites[0].GroupId == prerequisites.Prerequisites[1].GroupId,
+        "adjacent OR options must share one group ID");
+    Assert(prerequisites.Prerequisites[2].GroupId == 0,
+        "an AND prerequisite must remain mandatory");
+
+    var unresolved = WikiQuestMetadataParser.ParsePrerequisites("See the event requirements", "Current Quest");
+    Assert(!unresolved.IsResolved, "unstructured requirement prose must not erase stored prerequisites");
+
+    var requirements = WikiQuestMetadataParser.ParseRequirements(new[]
+    {
+        "Must reach PMC level 17",
+        "Must reach Loyalty Level 3 with Therapist"
+    });
+    Assert(requirements.MinimumLevel == 17, "explicit PMC level must be parsed");
+    Assert(requirements.UnverifiedRequirements.Count == 1 &&
+           requirements.UnverifiedRequirements[0].Contains("Loyalty Level 3", StringComparison.OrdinalIgnoreCase),
+        "non-level conditions must remain visible as unverified notes");
+});
+
+Run("English Wiki objectives produce complete item requirements", () =>
+{
+    var catalog = new[]
+    {
+        new WikiItemCatalogEntry("p22", "P22 stimulant injector"),
+        new WikiItemCatalogEntry("xtg", "XTG-12 antidote injector"),
+        new WikiItemCatalogEntry("obdolbos", "Obdolbos cocktail injector")
+    };
+    var items = WikiQuestMetadataParser.ParseRequiredItems(new[]
+    {
+        "Hand over 5 found in raid P22 stimulant injectors",
+        "Hand over 5 found in raid XTG-12 antidote injectors",
+        "Stash an Obdolbos cocktail injector in the first location",
+        "Stash an Obdolbos cocktail injector in the second location",
+        "Stash an Obdolbos cocktail injector in the third location"
+    }, catalog);
+
+    Assert(items.Count == 3, "the three Invasive Therapy item types must be resolved");
+    Assert(items.Single(item => item.ItemId == "p22").Count == 5, "P22 count must be five");
+    Assert(items.Single(item => item.ItemId == "p22").RequiresFir, "P22 must require FIR");
+    Assert(items.Single(item => item.ItemId == "xtg").Count == 5, "XTG-12 count must be five");
+    var obd = items.Single(item => item.ItemId == "obdolbos");
+    Assert(obd.Count == 3 && obd.RequirementType == "Stash",
+        "three individual Obdolbos stash goals must aggregate to three");
 });
 
 Run("startup initialization applies the complete database schema", () =>
@@ -578,6 +632,50 @@ Run("packaged quest database contains no excluded rows or orphaned links", () =>
             LEFT JOIN Quests alternative ON alternative.Id=optionalQuest.AlternativeQuestId
             WHERE quest.Id IS NULL OR alternative.Id IS NULL") == 0,
         "optional quest links must not reference deleted Arena quests");
+
+    Assert(TableExists(connection, "WikiQuestMetadata"),
+        "the packaged database must include Wiki requirement metadata");
+    Assert(TableExists(connection, "QuestIdentityAliases"),
+        "the packaged database must support future game-log ID aliases");
+    Assert(ScalarCount(connection, @"
+            SELECT COUNT(*)
+            FROM QuestRequiredItems item
+            JOIN Quests quest ON quest.Id=item.QuestId
+            WHERE quest.NameEN='Invasive Therapy'
+              AND item.ItemName LIKE 'P22%'
+              AND item.Count=5
+              AND item.RequiresFIR=1
+              AND item.RequirementType='Handover'") == 1,
+        "Invasive Therapy must require five FIR P22 injectors");
+    Assert(ScalarCount(connection, @"
+            SELECT COUNT(*)
+            FROM QuestRequiredItems item
+            JOIN Quests quest ON quest.Id=item.QuestId
+            WHERE quest.NameEN='Invasive Therapy'
+              AND item.ItemName LIKE '%XTG-12%'
+              AND item.Count=5
+              AND item.RequiresFIR=1
+              AND item.RequirementType='Handover'") == 1,
+        "Invasive Therapy must require five FIR XTG-12 injectors");
+    Assert(ScalarCount(connection, @"
+            SELECT COUNT(*)
+            FROM QuestRequiredItems item
+            JOIN Quests quest ON quest.Id=item.QuestId
+            WHERE quest.NameEN='Invasive Therapy'
+              AND item.ItemName LIKE 'Obdolbos%'
+              AND item.Count=3
+              AND item.RequirementType='Stash'") == 1,
+        "Invasive Therapy must require three Obdolbos stash items");
+    Assert(ScalarCount(connection, "SELECT COUNT(*) FROM QuestRequirements WHERE GroupId > 0") > 0,
+        "Wiki OR prerequisite groups must be preserved in the packaged database");
+    Assert(ScalarCount(connection, @"
+            SELECT COUNT(*)
+            FROM WikiQuestMetadata metadata
+            JOIN Quests quest ON quest.Id=metadata.QuestId
+            WHERE quest.NameEN='Invasive Therapy'
+              AND metadata.HasUnverifiedRequirements=1
+              AND metadata.RequirementNotes LIKE '%Loyalty Level 3%'") == 1,
+        "Invasive Therapy loyalty requirement must remain visible for manual verification");
 });
 
 Run("incomplete JSON is carried into the next chunk", () =>

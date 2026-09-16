@@ -22,6 +22,9 @@ namespace TarkovHelper.Pages
         public Visibility CompleteButtonVisibility { get; set; } = Visibility.Visible;
         public bool IsKappaRequired { get; set; }
         public Visibility KappaBadgeVisibility => IsKappaRequired ? Visibility.Visible : Visibility.Collapsed;
+        public Visibility LogSyncWarningVisibility { get; set; } = Visibility.Collapsed;
+        public string LogSyncToolTip { get; set; } = string.Empty;
+        public string StatusToolTip { get; set; } = string.Empty;
     }
 
     /// <summary>

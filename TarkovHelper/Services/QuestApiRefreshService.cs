@@ -164,7 +164,7 @@ public sealed class QuestApiRefreshService
             try
             {
                 using var request = new HttpRequestMessage(HttpMethod.Get, uri);
-                request.Headers.UserAgent.ParseAdd("TarkovHelper/1.5.25");
+                request.Headers.UserAgent.ParseAdd("TarkovHelper/1.5.26");
                 using var response = await _httpClient.SendAsync(request, cancellationToken);
                 var body = await response.Content.ReadAsStringAsync(cancellationToken);
                 if (response.IsSuccessStatusCode)
@@ -221,7 +221,7 @@ public sealed class QuestApiRefreshService
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, TrackerQuestEndpoint);
-            request.Headers.UserAgent.ParseAdd("TarkovHelper/1.5.10");
+            request.Headers.UserAgent.ParseAdd("TarkovHelper/1.5.26");
             using var response = await _httpClient.SendAsync(request, cancellationToken);
             var json = await response.Content.ReadAsStringAsync(cancellationToken);
             if (!response.IsSuccessStatusCode)

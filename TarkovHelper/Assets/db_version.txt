@@ -1,1 +1,1 @@
-1.5.25-english-wiki-authoritative
+1.5.26-english-wiki-integrity

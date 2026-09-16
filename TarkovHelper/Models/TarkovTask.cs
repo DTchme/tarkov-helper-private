@@ -169,6 +169,25 @@ namespace TarkovHelper.Models
         /// </summary>
         [JsonPropertyName("wikiPageLink")]
         public string? WikiPageLink { get; set; }
+
+        /// <summary>
+        /// Whether the quest can be matched to an ID emitted by the game log.
+        /// Wiki-only quests remain visible, but are explicitly marked when their
+        /// identity has not yet been confirmed by a game-log source.
+        /// </summary>
+        [JsonPropertyName("logSyncSupported")]
+        public bool LogSyncSupported { get; set; } = true;
+
+        /// <summary>
+        /// Wiki requirement text that cannot yet be evaluated automatically
+        /// (for example trader loyalty or a special in-game state).
+        /// </summary>
+        [JsonPropertyName("unverifiedRequirementNotes")]
+        public string? UnverifiedRequirementNotes { get; set; }
+
+        [JsonIgnore]
+        public bool HasUnverifiedRequirements =>
+            !string.IsNullOrWhiteSpace(UnverifiedRequirementNotes);
     }
 
     /// <summary>

@@ -25,6 +25,8 @@ public sealed class WikiQuestRefreshService
     private const int PageBatchSize = 20;
     private const string QuestOverviewStateKey = "__wiki_overview__:Quests";
     private const string StoryOverviewStateKey = "__wiki_overview__:Story chapters";
+    private const string OverlaySchemaStateKey = "__wiki_overlay_schema__";
+    private const long OverlaySchemaVersion = 2;
 
     private static readonly ILogger _log = Log.For<WikiQuestRefreshService>();
     private static readonly string[] TraderTableOrder =
@@ -60,6 +62,9 @@ public sealed class WikiQuestRefreshService
         rows.AddRange(ParseStoryChapterLinks(storyTask.Result));
 
         var knownState = syncStateTask.Result;
+        var forceFullRefresh =
+            !knownState.Revisions.TryGetValue(OverlaySchemaStateKey, out var overlaySchemaVersion) ||
+            overlaySchemaVersion != OverlaySchemaVersion;
         var activeNames = rows
             .Select(row => NormalizeQuestName(row.Name))
             .Concat(existingNamesTask.Result)
@@ -75,7 +80,9 @@ public sealed class WikiQuestRefreshService
             .Select(group => group.OrderByDescending(page => page.RevisionId).First())
             .ToList();
         var changedPages = candidatePages
-            .Where(page => !knownState.Revisions.TryGetValue(page.Title, out var revision) || revision != page.RevisionId)
+            .Where(page => forceFullRefresh ||
+                           !knownState.Revisions.TryGetValue(page.Title, out var revision) ||
+                           revision != page.RevisionId)
             .Where(page =>
                 knownState.Revisions.ContainsKey(page.Title) ||
                 activeNames.Contains(NormalizeQuestName(page.Title)) ||
@@ -103,7 +110,8 @@ public sealed class WikiQuestRefreshService
         }
 
         var overviewPages = new List<WikiPageRevision>();
-        if (!knownState.Revisions.TryGetValue(QuestOverviewStateKey, out var questOverviewRevision) ||
+        if (forceFullRefresh ||
+            !knownState.Revisions.TryGetValue(QuestOverviewStateKey, out var questOverviewRevision) ||
             questOverviewRevision != questsTask.Result.RevisionId)
         {
             overviewPages.Add(new WikiPageRevision(
@@ -111,12 +119,20 @@ public sealed class WikiQuestRefreshService
                 questsTask.Result.RevisionId,
                 DateTimeOffset.UtcNow));
         }
-        if (!knownState.Revisions.TryGetValue(StoryOverviewStateKey, out var storyOverviewRevision) ||
+        if (forceFullRefresh ||
+            !knownState.Revisions.TryGetValue(StoryOverviewStateKey, out var storyOverviewRevision) ||
             storyOverviewRevision != storyTask.Result.RevisionId)
         {
             overviewPages.Add(new WikiPageRevision(
                 StoryOverviewStateKey,
                 storyTask.Result.RevisionId,
+                DateTimeOffset.UtcNow));
+        }
+        if (forceFullRefresh)
+        {
+            overviewPages.Add(new WikiPageRevision(
+                OverlaySchemaStateKey,
+                OverlaySchemaVersion,
                 DateTimeOffset.UtcNow));
         }
 
@@ -125,6 +141,7 @@ public sealed class WikiQuestRefreshService
             _log.Info("Official Wiki quest data is unchanged; database replacement skipped");
             return new WikiQuestRefreshResult(
                 rows.Count,
+                0,
                 0,
                 0,
                 0,
@@ -163,6 +180,7 @@ public sealed class WikiQuestRefreshService
                 $"Official Wiki overlay completed: wiki={rows.Count}, added={stats.Added}, " +
                 $"updated={stats.Updated}, individualPages={individualRows.Count}, " +
                 $"objectivesReplaced={stats.ObjectivesFilled}, prerequisites={stats.Prerequisites}, " +
+                $"requiredItems={stats.RequiredItems}, " +
                 $"collectorItems={stats.CollectorItems}");
 
             return new WikiQuestRefreshResult(
@@ -172,6 +190,7 @@ public sealed class WikiQuestRefreshService
                 stats.ObjectivesFilled,
                 individualRows.Count,
                 stats.Prerequisites,
+                stats.RequiredItems,
                 backupPath,
                 true);
         }
@@ -469,16 +488,14 @@ public sealed class WikiQuestRefreshService
         var previousValue = ExtractInfoboxField(wikiText, "previous");
         var kappaValue = ExtractInfoboxField(wikiText, "reqkappa");
         var rawObjectives = ExtractWikiObjectives(wikiText);
+        var rawRequirements = ExtractWikiRequirements(wikiText);
         var objectives = rawObjectives
             .Select(_translator.TranslateObjective)
             .Where(value => !string.IsNullOrWhiteSpace(value))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
-        var previous = ExtractWikiLinks(previousValue.Value)
-            .Where(value => !value.Equals("See requirements", StringComparison.OrdinalIgnoreCase))
-            .Where(value => !value.Equals(title, StringComparison.OrdinalIgnoreCase))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        var prerequisiteResult = WikiQuestMetadataParser.ParsePrerequisites(previousValue.Value, title);
+        var requirementSummary = WikiQuestMetadataParser.ParseRequirements(rawRequirements);
         var trader = NormalizeTrader(CleanWikiText(traderValue.Value));
         var infoboxMap = NormalizeMap(CleanWikiText(locationValue.Value));
         var map = string.IsNullOrWhiteSpace(infoboxMap)
@@ -495,12 +512,15 @@ public sealed class WikiQuestRefreshService
             map,
             wikiLink,
             objectives,
-            Previous: previous,
+            Prerequisites: prerequisiteResult.Prerequisites.ToList(),
             IsIndividualPage: true,
             HasPreviousField: previousValue.Exists,
+            PrerequisitesResolved: prerequisiteResult.IsResolved,
             RevisionId: revisionId,
             KappaRequired: kappaRequired,
-            RawObjectives: rawObjectives);
+            RawObjectives: rawObjectives,
+            MinimumLevel: requirementSummary.MinimumLevel,
+            UnverifiedRequirements: requirementSummary.UnverifiedRequirements.ToList());
     }
 
     private static InfoboxField ExtractInfoboxField(string wikiText, string fieldPattern)
@@ -530,6 +550,22 @@ public sealed class WikiQuestRefreshService
         var section = Regex.Match(
             wikiText,
             @"(?ims)^==\s*Objectives\s*==\s*(?<body>.*?)(?=^==\s*[^=].*?==\s*$|\z)");
+        if (!section.Success)
+            return new List<string>();
+
+        return Regex.Matches(section.Groups["body"].Value, @"(?m)^\*(?!\*)\s*(?<value>.+?)\s*$")
+            .Cast<Match>()
+            .Select(match => CleanWikiText(match.Groups["value"].Value))
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static List<string> ExtractWikiRequirements(string wikiText)
+    {
+        var section = Regex.Match(
+            wikiText,
+            @"(?ims)^==\s*Requirements\s*==\s*(?<body>.*?)(?=^==\s*[^=].*?==\s*$|\z)");
         if (!section.Success)
             return new List<string>();
 
@@ -585,7 +621,7 @@ public sealed class WikiQuestRefreshService
     private static HttpRequestMessage CreateWikiRequest(string url)
     {
         var request = new HttpRequestMessage(HttpMethod.Get, url);
-        request.Headers.UserAgent.ParseAdd("TarkovHelper/1.5.25 (+English-Fandom-Wiki quest sync)");
+        request.Headers.UserAgent.ParseAdd("TarkovHelper/1.5.26 (+English-Fandom-Wiki quest sync)");
         return request;
     }
 
@@ -598,7 +634,7 @@ public sealed class WikiQuestRefreshService
             Uri.EscapeDataString(page);
 
         using var request = new HttpRequestMessage(HttpMethod.Get, apiUrl);
-        request.Headers.UserAgent.ParseAdd("TarkovHelper/1.5.10 (+official wiki sync)");
+        request.Headers.UserAgent.ParseAdd("TarkovHelper/1.5.26 (+official wiki sync)");
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
 
@@ -828,6 +864,7 @@ public sealed class WikiQuestRefreshService
         try
         {
             await EnsureWikiSyncStateTableAsync(connection, tx, cancellationToken);
+            await EnsureWikiMetadataTablesAsync(connection, tx, cancellationToken);
 
             var removedExcludedQuestCount = await QuestExclusionPolicy.RemoveExcludedRowsAsync(
                 connection,
@@ -838,7 +875,7 @@ public sealed class WikiQuestRefreshService
 
             var existing = new Dictionary<string, ExistingQuest>(StringComparer.OrdinalIgnoreCase);
             await using (var cmd = new SqliteCommand(
-                             "SELECT Id, NameEN, Name, BsgId, IsApproved, Trader, Location FROM Quests",
+                "SELECT Id, NameEN, Name, BsgId, IsApproved, Trader, Location FROM Quests",
                              connection,
                              tx))
             await using (var reader = await cmd.ExecuteReaderAsync(cancellationToken))
@@ -864,7 +901,11 @@ public sealed class WikiQuestRefreshService
 
                     var key = NormalizeQuestName(name);
                     if (!existing.ContainsKey(key))
-                        existing[key] = new ExistingQuest(id, name, !string.IsNullOrWhiteSpace(bsgId) || isApproved);
+                        existing[key] = new ExistingQuest(
+                            id,
+                            name,
+                            bsgId,
+                            !string.IsNullOrWhiteSpace(bsgId) || isApproved);
                 }
             }
 
@@ -872,6 +913,7 @@ public sealed class WikiQuestRefreshService
             var updated = 0;
             var objectivesFilled = 0;
             var prerequisites = 0;
+            var requiredItems = 0;
             var updatedAt = DateTime.UtcNow.ToString("o");
 
             // Pass 1: create/update every quest first. This lets prerequisite links
@@ -902,14 +944,17 @@ public sealed class WikiQuestRefreshService
                             Name=CASE WHEN Name IS NULL OR Name='' THEN @name ELSE Name END,
                             WikiPageLink=@wiki,
                             Trader=CASE WHEN @trader<>'' THEN @trader ELSE Trader END,
-                            Location=CASE WHEN @location<>'' THEN @location ELSE Location END,
-                            KappaRequired=CASE WHEN @kappaProvided=1 THEN @kappa ELSE KappaRequired END,
+                             Location=CASE WHEN @location<>'' THEN @location ELSE Location END,
+                             MinLevel=CASE WHEN @minLevelProvided=1 THEN @minLevel ELSE MinLevel END,
+                             KappaRequired=CASE WHEN @kappaProvided=1 THEN @kappa ELSE KappaRequired END,
                             UpdatedAt=@updatedAt
                         WHERE Id=@id", connection, tx);
                     update.Parameters.AddWithValue("@name", row.Name);
                     update.Parameters.AddWithValue("@wiki", row.WikiLink);
                     update.Parameters.AddWithValue("@trader", row.Trader);
                     update.Parameters.AddWithValue("@location", row.Map);
+                    update.Parameters.AddWithValue("@minLevelProvided", row.MinimumLevel.HasValue ? 1 : 0);
+                    AddNullable(update, "@minLevel", row.MinimumLevel);
                     update.Parameters.AddWithValue("@kappaProvided", row.KappaRequired.HasValue ? 1 : 0);
                     update.Parameters.AddWithValue("@kappa", row.KappaRequired == true ? 1 : 0);
                     update.Parameters.AddWithValue("@updatedAt", updatedAt);
@@ -928,20 +973,31 @@ public sealed class WikiQuestRefreshService
                             RequiredEditionApproved, ExcludedEditionApproved,
                             RequiredDecodeCountApproved, RequiredPrestigeLevelApproved)
                         VALUES (@id, NULL, @name, @name, NULL, NULL, @wiki,
-                            @trader, @location, NULL, 0, NULL, 0, @updatedAt, @kappa, NULL, 0,
+                             @trader, @location, @minLevel, 0, NULL, 0, @updatedAt, @kappa, NULL, 0,
                             0, 0, 0, 0)", connection, tx);
                     insert.Parameters.AddWithValue("@id", questId);
                     insert.Parameters.AddWithValue("@name", row.Name);
                     insert.Parameters.AddWithValue("@wiki", row.WikiLink);
                     insert.Parameters.AddWithValue("@trader", row.Trader);
                     insert.Parameters.AddWithValue("@location", row.Map);
+                    AddNullable(insert, "@minLevel", row.MinimumLevel);
                     insert.Parameters.AddWithValue("@kappa", row.KappaRequired == true ? 1 : 0);
                     insert.Parameters.AddWithValue("@updatedAt", updatedAt);
                     await insert.ExecuteNonQueryAsync(cancellationToken);
-                    existing[key] = new ExistingQuest(questId, row.Name, false);
+                    existing[key] = new ExistingQuest(questId, row.Name, null, false);
                     added++;
                 }
+
+                await UpsertWikiQuestMetadataAsync(
+                    connection,
+                    tx,
+                    questId,
+                    row.UnverifiedRequirementTexts,
+                    updatedAt,
+                    cancellationToken);
             }
+
+            var itemCatalog = await LoadItemCatalogAsync(connection, tx, cancellationToken);
 
             // Pass 2: an individual Wiki page is authoritative for visible objectives
             // and prerequisite links. Overview-table rows only update basic metadata.
@@ -977,6 +1033,15 @@ public sealed class WikiQuestRefreshService
                     updatedAt,
                     cancellationToken);
 
+                requiredItems += await ReplaceRequiredItemsFromWikiAsync(
+                    connection,
+                    tx,
+                    current.Id,
+                    row,
+                    itemCatalog,
+                    updatedAt,
+                    cancellationToken);
+
             }
 
             foreach (var page in processedPages)
@@ -990,7 +1055,7 @@ public sealed class WikiQuestRefreshService
                 cancellationToken);
 
             await tx.CommitAsync(cancellationToken);
-            return new OverlayStats(added, updated, objectivesFilled, prerequisites, collectorCount);
+            return new OverlayStats(added, updated, objectivesFilled, prerequisites, requiredItems, collectorCount);
         }
         catch
         {
@@ -1011,6 +1076,86 @@ public sealed class WikiQuestRefreshService
                 UpdatedAt TEXT NOT NULL
             )", connection, tx);
         await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static async Task EnsureWikiMetadataTablesAsync(
+        SqliteConnection connection,
+        SqliteTransaction tx,
+        CancellationToken cancellationToken)
+    {
+        await using var command = new SqliteCommand(@"
+            CREATE TABLE IF NOT EXISTS WikiQuestMetadata (
+                QuestId TEXT PRIMARY KEY,
+                RequirementNotes TEXT,
+                HasUnverifiedRequirements INTEGER NOT NULL DEFAULT 0,
+                UpdatedAt TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS QuestIdentityAliases (
+                QuestId TEXT NOT NULL,
+                GameQuestId TEXT NOT NULL,
+                Source TEXT NOT NULL DEFAULT 'release',
+                UpdatedAt TEXT NOT NULL,
+                PRIMARY KEY (QuestId, GameQuestId)
+            );
+
+            CREATE INDEX IF NOT EXISTS IX_QuestIdentityAliases_GameQuestId
+                ON QuestIdentityAliases(GameQuestId);", connection, tx);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static async Task UpsertWikiQuestMetadataAsync(
+        SqliteConnection connection,
+        SqliteTransaction tx,
+        string questId,
+        IReadOnlyList<string> unverifiedRequirements,
+        string updatedAt,
+        CancellationToken cancellationToken)
+    {
+        var notes = string.Join(
+            Environment.NewLine,
+            unverifiedRequirements
+                .Where(item => !string.IsNullOrWhiteSpace(item))
+                .Distinct(StringComparer.OrdinalIgnoreCase));
+
+        await using var command = new SqliteCommand(@"
+            INSERT INTO WikiQuestMetadata (
+                QuestId, RequirementNotes, HasUnverifiedRequirements, UpdatedAt)
+            VALUES (@questId, @notes, @hasUnverified, @updatedAt)
+            ON CONFLICT(QuestId) DO UPDATE SET
+                RequirementNotes=excluded.RequirementNotes,
+                HasUnverifiedRequirements=excluded.HasUnverifiedRequirements,
+                UpdatedAt=excluded.UpdatedAt", connection, tx);
+        command.Parameters.AddWithValue("@questId", questId);
+        AddNullable(command, "@notes", string.IsNullOrWhiteSpace(notes) ? null : notes);
+        command.Parameters.AddWithValue("@hasUnverified", string.IsNullOrWhiteSpace(notes) ? 0 : 1);
+        command.Parameters.AddWithValue("@updatedAt", updatedAt);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static async Task<List<WikiItemCatalogEntry>> LoadItemCatalogAsync(
+        SqliteConnection connection,
+        SqliteTransaction tx,
+        CancellationToken cancellationToken)
+    {
+        var items = new List<WikiItemCatalogEntry>();
+        await using var command = new SqliteCommand(
+            "SELECT Id, COALESCE(NULLIF(NameEN, ''), Name) FROM Items",
+            connection,
+            tx);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            if (reader.IsDBNull(0) || reader.IsDBNull(1))
+                continue;
+
+            var id = reader.GetString(0);
+            var name = reader.GetString(1);
+            if (!string.IsNullOrWhiteSpace(id) && !string.IsNullOrWhiteSpace(name))
+                items.Add(new WikiItemCatalogEntry(id, name));
+        }
+
+        return items;
     }
 
     private static async Task UpsertWikiRevisionAsync(
@@ -1164,7 +1309,10 @@ public sealed class WikiQuestRefreshService
         string updatedAt,
         CancellationToken cancellationToken)
     {
-        if (!row.HasPreviousField)
+        // If the Wiki field could not be interpreted safely, retain the last known
+        // prerequisite graph rather than silently turning an unknown requirement
+        // into "conditions met".
+        if (!row.HasPreviousField || !row.PrerequisitesResolved)
             return 0;
 
         await using (var delete = new SqliteCommand(
@@ -1177,8 +1325,9 @@ public sealed class WikiQuestRefreshService
         }
 
         var inserted = 0;
-        foreach (var previousName in row.PreviousQuestNames)
+        foreach (var prerequisite in row.PrerequisiteLinks)
         {
+            var previousName = prerequisite.Name;
             if (!quests.TryGetValue(NormalizeQuestName(previousName), out var required) ||
                 required.Id.Equals(questId, StringComparison.OrdinalIgnoreCase))
             {
@@ -1191,17 +1340,81 @@ public sealed class WikiQuestRefreshService
                     Id, QuestId, RequiredQuestId, RequirementType,
                     DelayMinutes, GroupId, IsApproved, UpdatedAt)
                 VALUES (@id, @questId, @requiredQuestId, 'Complete',
-                    NULL, 0, 0, @updatedAt)", connection, tx);
+                    NULL, @groupId, 0, @updatedAt)", connection, tx);
             insert.Parameters.AddWithValue(
                 "@id",
-                "fandomreq_" + StableHash(questId + "|" + required.Id + "|complete"));
+                "fandomreq_" + StableHash(
+                    questId + "|" + required.Id + "|complete|" + prerequisite.GroupId));
             insert.Parameters.AddWithValue("@questId", questId);
             insert.Parameters.AddWithValue("@requiredQuestId", required.Id);
+            insert.Parameters.AddWithValue("@groupId", prerequisite.GroupId);
             insert.Parameters.AddWithValue("@updatedAt", updatedAt);
             inserted += await insert.ExecuteNonQueryAsync(cancellationToken);
         }
 
         return inserted;
+    }
+
+    private static async Task<int> ReplaceRequiredItemsFromWikiAsync(
+        SqliteConnection connection,
+        SqliteTransaction tx,
+        string questId,
+        WikiQuestRow row,
+        IReadOnlyList<WikiItemCatalogEntry> itemCatalog,
+        string updatedAt,
+        CancellationToken cancellationToken)
+    {
+        var candidateObjectives = row.RawObjectiveTexts
+            .Where(WikiQuestMetadataParser.IsRequiredItemObjective)
+            .ToList();
+        if (candidateObjectives.Count == 0 || candidateObjectives.Any(objective =>
+                WikiQuestMetadataParser.ParseRequiredItems(new[] { objective }, itemCatalog).Count == 0))
+        {
+            return 0;
+        }
+
+        var parsed = WikiQuestMetadataParser.ParseRequiredItems(candidateObjectives, itemCatalog);
+
+        // Only replace the existing item rows when the Wiki objectives produced a
+        // complete, resolvable item set. This protects richer structured rows from
+        // being erased by prose-only or temporarily malformed Wiki pages.
+        if (parsed.Count == 0)
+            return 0;
+
+        await using (var delete = new SqliteCommand(
+                         "DELETE FROM QuestRequiredItems WHERE QuestId=@questId",
+                         connection,
+                         tx))
+        {
+            delete.Parameters.AddWithValue("@questId", questId);
+            await delete.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        for (var sort = 0; sort < parsed.Count; sort++)
+        {
+            var item = parsed[sort];
+            await using var insert = new SqliteCommand(@"
+                INSERT INTO QuestRequiredItems (
+                    Id, QuestId, ItemId, ItemName, Count, RequiresFIR,
+                    RequirementType, SortOrder, IsApproved, UpdatedAt)
+                VALUES (@id, @questId, @itemId, @itemName, @count, @fir,
+                    @type, @sort, 0, @updatedAt)", connection, tx);
+            insert.Parameters.AddWithValue(
+                "@id",
+                "fandomitem_" + StableHash(
+                    questId + "|" + item.ItemId + "|" + item.RequirementType));
+            insert.Parameters.AddWithValue("@questId", questId);
+            insert.Parameters.AddWithValue("@itemId", item.ItemId);
+            insert.Parameters.AddWithValue("@itemName", item.ItemName);
+            insert.Parameters.AddWithValue("@count", item.Count);
+            insert.Parameters.AddWithValue("@fir", item.RequiresFir ? 1 : 0);
+            insert.Parameters.AddWithValue("@type", item.RequirementType);
+            insert.Parameters.AddWithValue("@sort", sort);
+            insert.Parameters.AddWithValue("@updatedAt", updatedAt);
+            await insert.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        return parsed.Count;
     }
 
     private static ExistingObjectiveMetadata? FindBestObjectiveMetadata(
@@ -1439,14 +1652,24 @@ public sealed class WikiQuestRefreshService
         bool HasPreviousField = false,
         long? RevisionId = null,
         bool? KappaRequired = null,
-        List<string>? RawObjectives = null)
+        List<string>? RawObjectives = null,
+        List<WikiPrerequisite>? Prerequisites = null,
+        bool PrerequisitesResolved = true,
+        int? MinimumLevel = null,
+        List<string>? UnverifiedRequirements = null)
     {
         public IReadOnlyList<string> PreviousQuestNames =>
             Previous is null ? Array.Empty<string>() : Previous;
+        public IReadOnlyList<WikiPrerequisite> PrerequisiteLinks =>
+            Prerequisites is null
+                ? PreviousQuestNames.Select(name => new WikiPrerequisite(name, 0)).ToList()
+                : Prerequisites;
         public IReadOnlyList<string> RawObjectiveTexts =>
             RawObjectives is null ? Array.Empty<string>() : RawObjectives;
+        public IReadOnlyList<string> UnverifiedRequirementTexts =>
+            UnverifiedRequirements is null ? Array.Empty<string>() : UnverifiedRequirements;
     }
-    private sealed record ExistingQuest(string Id, string Name, bool IsStructured);
+    private sealed record ExistingQuest(string Id, string Name, string? BsgId, bool IsStructured);
     private sealed record ExistingObjectiveMetadata(
         string Id,
         string ObjectiveType,
@@ -1471,6 +1694,7 @@ public sealed class WikiQuestRefreshService
         int Updated,
         int ObjectivesFilled,
         int Prerequisites,
+        int RequiredItems,
         int CollectorItems);
 }
 
@@ -1481,5 +1705,6 @@ public sealed record WikiQuestRefreshResult(
     int ObjectivesFilledCount,
     int IndividualPageCount,
     int PrerequisiteCount,
+    int RequiredItemCount,
     string BackupPath,
     bool WasChanged);

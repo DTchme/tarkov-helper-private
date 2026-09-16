@@ -359,7 +359,14 @@ namespace TarkovHelper.Pages
                 StatusBackground = GetStatusBrush(status),
                 CompleteButtonVisibility = (status == QuestStatus.Available || status == QuestStatus.Active || status == QuestStatus.Locked || status == QuestStatus.LevelLocked)
                     && status != QuestStatus.Unavailable ? Visibility.Visible : Visibility.Collapsed,
-                IsKappaRequired = task.ReqKappa
+                IsKappaRequired = task.ReqKappa,
+                LogSyncWarningVisibility = task.LogSyncSupported ? Visibility.Collapsed : Visibility.Visible,
+                LogSyncToolTip = task.LogSyncSupported
+                    ? string.Empty
+                    : "게임 로그의 퀘스트 ID가 아직 확인되지 않아 자동 진행 상태 동기화가 보장되지 않습니다.",
+                StatusToolTip = task.HasUnverifiedRequirements
+                    ? $"위키에 자동 판정할 수 없는 조건이 있습니다.\n{task.UnverifiedRequirementNotes}"
+                    : string.Empty
             };
         }
 
@@ -384,6 +391,9 @@ namespace TarkovHelper.Pages
 
         private string GetStatusText(QuestStatus status, TarkovTask? task = null)
         {
+            if (status == QuestStatus.Available && task?.HasUnverifiedRequirements == true)
+                return "조건 확인 필요";
+
             if (status == QuestStatus.LevelLocked && task != null)
             {
                 // Check if it's level-locked or karma-locked
@@ -475,6 +485,9 @@ namespace TarkovHelper.Pages
                 vm.Status = status;
                 vm.StatusText = GetStatusText(status, vm.Task);
                 vm.StatusBackground = GetStatusBrush(status);
+                vm.StatusToolTip = vm.Task.HasUnverifiedRequirements
+                    ? $"위키에 자동 판정할 수 없는 조건이 있습니다.\n{vm.Task.UnverifiedRequirementNotes}"
+                    : string.Empty;
                 vm.CompleteButtonVisibility = (status == QuestStatus.Available || status == QuestStatus.Active || status == QuestStatus.Locked || status == QuestStatus.LevelLocked)
                     && status != QuestStatus.Unavailable ? Visibility.Visible : Visibility.Collapsed;
             }
@@ -710,7 +723,10 @@ namespace TarkovHelper.Pages
 
             // Trader & Status
             TxtDetailTrader.Text = _loc.GetLocalizedTraderName(task.Trader);
-            TxtDetailStatus.Text = GetStatusText(status);
+            TxtDetailStatus.Text = GetStatusText(status, task);
+            TxtDetailStatus.ToolTip = task.HasUnverifiedRequirements
+                ? $"위키에 자동 판정할 수 없는 조건이 있습니다.\n{task.UnverifiedRequirementNotes}"
+                : null;
             DetailStatusBadge.Background = GetStatusBrush(status);
 
             // Maps
@@ -808,7 +824,7 @@ namespace TarkovHelper.Pages
                             {
                                 Task = reqTask,
                                 DisplayName = pName,
-                                StatusText = GetStatusText(pStatus),
+                                StatusText = GetStatusText(pStatus, reqTask),
                                 StatusBackground = GetStatusBrush(pStatus),
                                 IsOrItem = false
                             }
@@ -843,7 +859,7 @@ namespace TarkovHelper.Pages
                                     {
                                         Task = reqTask,
                                         DisplayName = pName,
-                                        StatusText = GetStatusText(pStatus),
+                                        StatusText = GetStatusText(pStatus, reqTask),
                                         StatusBackground = GetStatusBrush(pStatus),
                                         IsOrItem = false
                                     }
@@ -876,7 +892,7 @@ namespace TarkovHelper.Pages
                         {
                             Task = reqTask,
                             DisplayName = pName,
-                            StatusText = GetStatusText(pStatus),
+                            StatusText = GetStatusText(pStatus, reqTask),
                             StatusBackground = GetStatusBrush(pStatus),
                             IsOrItem = !isFirst  // Show "OR" separator for 2nd item onwards
                         });
