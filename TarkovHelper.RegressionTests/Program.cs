@@ -297,6 +297,17 @@ Run("English Wiki objectives produce complete item requirements", () =>
         "three individual Obdolbos stash goals must aggregate to three");
 });
 
+Run("quest list keeps log identity warnings in details only", () =>
+{
+    var questPage = File.ReadAllText(Path.Combine("TarkovHelper", "Pages", "QuestListPage.xaml"));
+    Assert(!questPage.Contains("LOG?", StringComparison.Ordinal),
+        "the quest list must not repeat the ambiguous LOG? badge");
+    Assert(questPage.Contains("x:Name=\"LogSyncNotice\"", StringComparison.Ordinal),
+        "the quest detail panel must retain a log synchronization notice");
+    Assert(questPage.Contains("로그 자동 동기화 미확인", StringComparison.Ordinal),
+        "the detail notice must use a clear Korean label");
+});
+
 Run("startup initialization applies the complete database schema", () =>
 {
     var tempRoot = Path.Combine(Path.GetTempPath(), "TarkovHelperRegression", Guid.NewGuid().ToString("N"));
