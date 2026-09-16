@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Microsoft.Data.Sqlite;
 using TarkovHelper.Models;
 using TarkovHelper.Services.Logging;
@@ -102,6 +103,11 @@ public sealed class QuestDbService
             var quests = await LoadBaseQuestsAsync(connection);
             var questLookup = quests.ToDictionary(q => q.Ids?.FirstOrDefault() ?? "", q => q, StringComparer.OrdinalIgnoreCase);
 
+            // Wiki-specific metadata and explicit game-log identity aliases are
+            // optional for backwards compatibility with older packaged databases.
+            await LoadWikiQuestMetadataAsync(connection, questLookup);
+            await LoadQuestIdentityAliasesAsync(connection, questLookup);
+
             // 2. 선행 퀘스트 요구사항 로드
             await LoadQuestRequirementsAsync(connection, questLookup);
 
@@ -123,10 +129,10 @@ public sealed class QuestDbService
 
             foreach (var quest in quests)
             {
-                var id = quest.Ids?.FirstOrDefault();
-                if (!string.IsNullOrEmpty(id))
+                foreach (var id in quest.Ids ?? [])
                 {
-                    newQuestsById[id] = quest;
+                    if (!string.IsNullOrWhiteSpace(id))
+                        newQuestsById[id] = quest;
                 }
                 if (!string.IsNullOrEmpty(quest.NormalizedName))
                 {
@@ -257,7 +263,8 @@ public sealed class QuestDbService
                 ExcludedEdition = reader.IsDBNull(13) ? null : reader.GetString(13),
                 RequiredPrestigeLevel = reader.IsDBNull(14) ? null : reader.GetInt32(14),
                 RequiredDecodeCount = reader.IsDBNull(15) ? null : reader.GetInt32(15),
-                WikiPageLink = reader.IsDBNull(16) ? null : reader.GetString(16)
+                WikiPageLink = reader.IsDBNull(16) ? null : reader.GetString(16),
+                LogSyncSupported = !string.IsNullOrWhiteSpace(bsgId) || IsGameQuestId(id)
             };
 
             // BsgId가 있으면 Ids에 추가
@@ -279,6 +286,61 @@ public sealed class QuestDbService
 
         return quests;
     }
+
+    private async Task LoadWikiQuestMetadataAsync(
+        SqliteConnection connection,
+        IReadOnlyDictionary<string, TarkovTask> questLookup)
+    {
+        if (!await TableExistsAsync(connection, "WikiQuestMetadata"))
+            return;
+
+        await using var command = new SqliteCommand(@"
+            SELECT QuestId, RequirementNotes, HasUnverifiedRequirements
+            FROM WikiQuestMetadata", connection);
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var questId = reader.GetString(0);
+            if (!questLookup.TryGetValue(questId, out var quest))
+                continue;
+
+            var hasUnverified = !reader.IsDBNull(2) && reader.GetInt32(2) == 1;
+            quest.UnverifiedRequirementNotes = hasUnverified && !reader.IsDBNull(1)
+                ? reader.GetString(1)
+                : null;
+        }
+    }
+
+    private async Task LoadQuestIdentityAliasesAsync(
+        SqliteConnection connection,
+        IReadOnlyDictionary<string, TarkovTask> questLookup)
+    {
+        if (!await TableExistsAsync(connection, "QuestIdentityAliases"))
+            return;
+
+        await using var command = new SqliteCommand(@"
+            SELECT QuestId, GameQuestId
+            FROM QuestIdentityAliases", connection);
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var questId = reader.GetString(0);
+            var gameQuestId = reader.GetString(1);
+            if (!questLookup.TryGetValue(questId, out var quest) ||
+                string.IsNullOrWhiteSpace(gameQuestId))
+            {
+                continue;
+            }
+
+            quest.Ids ??= new List<string>();
+            if (!quest.Ids.Contains(gameQuestId, StringComparer.OrdinalIgnoreCase))
+                quest.Ids.Add(gameQuestId);
+            quest.LogSyncSupported = true;
+        }
+    }
+
+    private static bool IsGameQuestId(string value) =>
+        Regex.IsMatch(value ?? string.Empty, "^[0-9a-f]{24}$", RegexOptions.IgnoreCase);
 
     /// <summary>
     /// Location 문자열을 맵 리스트로 파싱

@@ -708,7 +708,10 @@ namespace TarkovHelper.Services
             // Complete prerequisites first (recursive) using TaskRequirements
             if (completePrerequisites && task.TaskRequirements != null)
             {
-                foreach (var req in task.TaskRequirements)
+                // A started/completed child proves every AND prerequisite, but it
+                // does not reveal which branch of an OR group the player chose.
+                // Never mark all OR branches complete from that ambiguous evidence.
+                foreach (var req in task.TaskRequirements.Where(requirement => requirement.GroupId == 0))
                 {
                     var prevTask = !string.IsNullOrEmpty(req.TaskId)
                         ? GetTaskById(req.TaskId)
@@ -834,7 +837,8 @@ namespace TarkovHelper.Services
             // Complete prerequisites first (recursive) using TaskRequirements
             if (completePrerequisites && task.TaskRequirements != null)
             {
-                foreach (var req in task.TaskRequirements)
+                // Do not infer a specific completed branch from an OR group.
+                foreach (var req in task.TaskRequirements.Where(requirement => requirement.GroupId == 0))
                 {
                     var prevTask = !string.IsNullOrEmpty(req.TaskId)
                         ? GetTaskById(req.TaskId)

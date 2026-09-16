@@ -60,20 +60,21 @@
                                    TextTrimming="CharacterEllipsis"/>
                     </StackPanel>
 
-                    <!-- Kappa Badge -->
+                    <!-- Game-log identity warning for Wiki-only quests -->
                     <Border Grid.Column="2" Padding="4,2" CornerRadius="3"
-                            Background="#9C27B0"
+                            Background="#F57C00"
                             VerticalAlignment="Center" Margin="0,0,6,0"
-                            Visibility="Collapsed"
-                            ToolTip="카파 표시는 현재 버전에서 사용하지 않습니다.">
-                        <TextBlock Text="κ" FontSize="{DynamicResource FontSizeTiny}"
+                            Visibility="{Binding LogSyncWarningVisibility}"
+                            ToolTip="{Binding LogSyncToolTip}">
+                        <TextBlock Text="LOG?" FontSize="{DynamicResource FontSizeTiny}"
                                    Foreground="White" FontWeight="Bold"/>
                     </Border>
 
                     <!-- Status Badge -->
                     <Border Grid.Column="3" Padding="8,3" CornerRadius="3"
                             Background="{Binding StatusBackground}"
-                            VerticalAlignment="Center" Margin="0,0,8,0">
+                            VerticalAlignment="Center" Margin="0,0,8,0"
+                            ToolTip="{Binding StatusToolTip}">
                         <TextBlock Text="{Binding StatusText}" FontSize="{DynamicResource FontSizeTiny}"
                                    Foreground="White" FontWeight="SemiBold"/>
                     </Border>
