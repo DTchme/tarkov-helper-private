@@ -621,7 +621,7 @@ public sealed class WikiQuestRefreshService
     private static HttpRequestMessage CreateWikiRequest(string url)
     {
         var request = new HttpRequestMessage(HttpMethod.Get, url);
-        request.Headers.UserAgent.ParseAdd("TarkovHelper/1.5.27 (+English-Fandom-Wiki quest sync)");
+        request.Headers.UserAgent.ParseAdd("TarkovHelper/1.5.28 (+English-Fandom-Wiki quest sync)");
         return request;
     }
 
@@ -634,7 +634,7 @@ public sealed class WikiQuestRefreshService
             Uri.EscapeDataString(page);
 
         using var request = new HttpRequestMessage(HttpMethod.Get, apiUrl);
-        request.Headers.UserAgent.ParseAdd("TarkovHelper/1.5.27 (+official wiki sync)");
+        request.Headers.UserAgent.ParseAdd("TarkovHelper/1.5.28 (+official wiki sync)");
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
 
@@ -1243,10 +1243,17 @@ public sealed class WikiQuestRefreshService
                 ? row.RawObjectiveTexts[sort]
                 : objective;
             var metadata = FindBestObjectiveMetadata(objective, rawObjective, previous, usedIds);
-            var objectiveId = metadata?.Id
-                              ?? "fandomobj_" + StableHash(questId + "|" + sort + "|" + objective);
-            if (!usedIds.Add(objectiveId))
-                objectiveId = "fandomobj_" + StableHash(questId + "|" + sort + "|" + objective);
+            var preferredObjectiveId = metadata?.Id
+                                       ?? "fandomobj_" + StableHash(questId + "|" + sort + "|" + objective);
+            var objectiveId = await ResolveUniqueObjectiveIdAsync(
+                connection,
+                tx,
+                preferredObjectiveId,
+                questId,
+                sort,
+                objective,
+                usedIds,
+                cancellationToken);
 
             var mapName = metadata?.MapName;
             if (string.IsNullOrWhiteSpace(mapName))
@@ -1298,6 +1305,51 @@ public sealed class WikiQuestRefreshService
         }
 
         return row.Objectives.Count;
+    }
+
+    /// <summary>
+    /// Keeps an existing objective ID when it is available, but deterministically
+    /// derives a quest-scoped fallback when a stale or malformed source database
+    /// has already assigned that ID elsewhere. QuestObjectives.Id is the table's
+    /// primary key, so checking only the objectives inserted in the current quest
+    /// is not sufficient.
+    /// </summary>
+    internal static async Task<string> ResolveUniqueObjectiveIdAsync(
+        SqliteConnection connection,
+        SqliteTransaction? transaction,
+        string preferredId,
+        string questId,
+        int sortOrder,
+        string objective,
+        ISet<string> usedIds,
+        CancellationToken cancellationToken = default)
+    {
+        var candidate = preferredId;
+        var collisionIndex = 0;
+
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (!usedIds.Contains(candidate))
+            {
+                await using var exists = new SqliteCommand(
+                    "SELECT 1 FROM QuestObjectives WHERE Id=@id LIMIT 1",
+                    connection,
+                    transaction);
+                exists.Parameters.AddWithValue("@id", candidate);
+                if (await exists.ExecuteScalarAsync(cancellationToken) == null)
+                {
+                    usedIds.Add(candidate);
+                    return candidate;
+                }
+            }
+
+            var salt = collisionIndex == 0 ? string.Empty : $"|collision:{collisionIndex}";
+            candidate = "fandomobj_" + StableHash(
+                questId + "|" + sortOrder + "|" + objective + salt);
+            collisionIndex++;
+        }
     }
 
     private static async Task<int> ReplacePrerequisitesFromWikiAsync(

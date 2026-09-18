@@ -297,6 +297,66 @@ Run("English Wiki objectives produce complete item requirements", () =>
         "three individual Obdolbos stash goals must aggregate to three");
 });
 
+Run("Wiki objective IDs recover from database-wide collisions", () =>
+{
+    var tempRoot = Path.Combine(Path.GetTempPath(), "TarkovHelperWikiObjectiveRegression", Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(tempRoot);
+    var databasePath = Path.Combine(tempRoot, "objective-collision.db");
+
+    try
+    {
+        using var connection = new SqliteConnection($"Data Source={databasePath}");
+        connection.Open();
+        using (var create = connection.CreateCommand())
+        {
+            create.CommandText = @"
+                CREATE TABLE QuestObjectives (
+                    Id TEXT PRIMARY KEY,
+                    QuestId TEXT NOT NULL
+                );
+                INSERT INTO QuestObjectives (Id, QuestId)
+                VALUES ('shared-objective-id', 'older-quest');";
+            create.ExecuteNonQuery();
+        }
+
+        var usedIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var resolved = WikiQuestRefreshService.ResolveUniqueObjectiveIdAsync(
+                connection,
+                null,
+                "shared-objective-id",
+                "new-quest",
+                0,
+                "Locate the objective",
+                usedIds)
+            .GetAwaiter()
+            .GetResult();
+
+        Assert(resolved != "shared-objective-id",
+            "an ID owned by another quest must receive a quest-scoped fallback");
+        Assert(resolved.StartsWith("fandomobj_", StringComparison.Ordinal),
+            "the fallback objective ID must use the Wiki objective namespace");
+        Assert(usedIds.Contains(resolved),
+            "the resolved ID must be reserved for the remainder of the quest refresh");
+
+        var freeId = WikiQuestRefreshService.ResolveUniqueObjectiveIdAsync(
+                connection,
+                null,
+                "free-objective-id",
+                "new-quest",
+                1,
+                "Survive and extract",
+                usedIds)
+            .GetAwaiter()
+            .GetResult();
+        Assert(freeId == "free-objective-id",
+            "an available existing objective ID must be preserved for progress continuity");
+    }
+    finally
+    {
+        try { Directory.Delete(tempRoot, recursive: true); } catch { }
+    }
+});
+
 Run("quest list keeps log identity warnings in details only", () =>
 {
     var questPage = File.ReadAllText(Path.Combine("TarkovHelper", "Pages", "QuestListPage.xaml"));
@@ -684,9 +744,9 @@ Run("packaged quest database contains no excluded rows or orphaned links", () =>
             FROM WikiQuestMetadata metadata
             JOIN Quests quest ON quest.Id=metadata.QuestId
             WHERE quest.NameEN='Invasive Therapy'
-              AND metadata.HasUnverifiedRequirements=1
-              AND metadata.RequirementNotes LIKE '%Loyalty Level 3%'") == 1,
-        "Invasive Therapy loyalty requirement must remain visible for manual verification");
+              AND metadata.HasUnverifiedRequirements=0
+              AND COALESCE(metadata.RequirementNotes, '') NOT LIKE '%Loyalty Level 3%'") == 1,
+        "Invasive Therapy must not retain the loyalty requirement removed from the current English Wiki");
 });
 
 Run("incomplete JSON is carried into the next chunk", () =>

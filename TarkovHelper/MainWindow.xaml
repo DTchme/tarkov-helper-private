@@ -587,22 +587,30 @@
                                                    Foreground="{StaticResource TextPrimaryBrush}"
                                                    Margin="0,0,0,8"/>
 
-                                        <TextBlock Text="tarkov.dev API에서 최신 아이템 및 퀘스트 정보를 수동으로 보충합니다."
+                                        <TextBlock Text="영문 Escape from Tarkov Wiki에서 최신 퀘스트 정보를 수동으로 갱신합니다."
                                                    FontSize="{DynamicResource FontSizeXSmall}"
                                                    Foreground="{StaticResource TextSecondaryBrush}"
                                                    TextWrapping="Wrap"
                                                    Margin="0,0,0,12"/>
 
-                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                        <Grid Margin="0,0,0,8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
                                             <Button x:Name="BtnUpdateApiData" Content="현재 프로필 퀘스트 DB 갱신"
+                                                    Grid.Column="0"
                                                     Padding="12,8" Margin="0,0,12,0"
                                                     Click="BtnUpdateApiData_Click"/>
                                             <TextBlock x:Name="TxtApiUpdateStatus"
+                                                       Grid.Column="1"
                                                        Text=""
                                                        FontSize="{DynamicResource FontSizeXSmall}"
                                                        Foreground="{StaticResource TextSecondaryBrush}"
-                                                       VerticalAlignment="Center"/>
-                                        </StackPanel>
+                                                       VerticalAlignment="Center"
+                                                       TextWrapping="Wrap"
+                                                       ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
+                                        </Grid>
                                     </StackPanel>
                                 </Border>
 
