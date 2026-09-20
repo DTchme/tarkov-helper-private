@@ -323,7 +323,7 @@ public class SettingsService
 
     /// <summary>
     /// DSP Radio Transmitter decode count for Make Amends quest branches
-    /// 0 = Buyout, 1 = Security, 2 or 3 = Software
+    /// 0 = not decoded, 1 = Buyout, 2 = Security, 3 = Software
     /// </summary>
     public int DspDecodeCount
     {

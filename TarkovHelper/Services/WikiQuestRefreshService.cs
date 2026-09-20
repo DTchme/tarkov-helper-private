@@ -26,7 +26,7 @@ public sealed class WikiQuestRefreshService
     private const string QuestOverviewStateKey = "__wiki_overview__:Quests";
     private const string StoryOverviewStateKey = "__wiki_overview__:Story chapters";
     private const string OverlaySchemaStateKey = "__wiki_overlay_schema__";
-    private const long OverlaySchemaVersion = 2;
+    private const long OverlaySchemaVersion = 3;
 
     private static readonly ILogger _log = Log.For<WikiQuestRefreshService>();
     private static readonly string[] TraderTableOrder =
@@ -487,9 +487,10 @@ public sealed class WikiQuestRefreshService
         var locationValue = ExtractInfoboxField(wikiText, "location");
         var previousValue = ExtractInfoboxField(wikiText, "previous");
         var kappaValue = ExtractInfoboxField(wikiText, "reqkappa");
-        var rawObjectives = ExtractWikiObjectives(wikiText);
+        var displayObjectives = ExtractWikiObjectives(wikiText);
+        var canonicalObjectives = ExtractWikiObjectives(wikiText, preferLinkTarget: true);
         var rawRequirements = ExtractWikiRequirements(wikiText);
-        var objectives = rawObjectives
+        var objectives = displayObjectives
             .Select(_translator.TranslateObjective)
             .Where(value => !string.IsNullOrWhiteSpace(value))
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -499,7 +500,7 @@ public sealed class WikiQuestRefreshService
         var trader = NormalizeTrader(CleanWikiText(traderValue.Value));
         var infoboxMap = NormalizeMap(CleanWikiText(locationValue.Value));
         var map = string.IsNullOrWhiteSpace(infoboxMap)
-            ? NormalizeMap(string.Join(" ", rawObjectives))
+            ? NormalizeMap(string.Join(" ", displayObjectives))
             : infoboxMap;
         var wikiLink = FandomPageBase + BuildWikiSlug(title);
         bool? kappaRequired = kappaValue.Exists
@@ -518,7 +519,7 @@ public sealed class WikiQuestRefreshService
             PrerequisitesResolved: prerequisiteResult.IsResolved,
             RevisionId: revisionId,
             KappaRequired: kappaRequired,
-            RawObjectives: rawObjectives,
+            RawObjectives: canonicalObjectives,
             MinimumLevel: requirementSummary.MinimumLevel,
             UnverifiedRequirements: requirementSummary.UnverifiedRequirements.ToList());
     }
@@ -545,7 +546,7 @@ public sealed class WikiQuestRefreshService
             : new InfoboxField(false, string.Empty);
     }
 
-    private static List<string> ExtractWikiObjectives(string wikiText)
+    private static List<string> ExtractWikiObjectives(string wikiText, bool preferLinkTarget = false)
     {
         var section = Regex.Match(
             wikiText,
@@ -555,7 +556,7 @@ public sealed class WikiQuestRefreshService
 
         return Regex.Matches(section.Groups["body"].Value, @"(?m)^\*(?!\*)\s*(?<value>.+?)\s*$")
             .Cast<Match>()
-            .Select(match => CleanWikiText(match.Groups["value"].Value))
+            .Select(match => CleanWikiText(match.Groups["value"].Value, preferLinkTarget))
             .Where(value => !string.IsNullOrWhiteSpace(value))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
@@ -589,7 +590,7 @@ public sealed class WikiQuestRefreshService
             .ToList();
     }
 
-    private static string CleanWikiText(string value)
+    private static string CleanWikiText(string value, bool preferLinkTarget = false)
     {
         if (string.IsNullOrWhiteSpace(value))
             return string.Empty;
@@ -598,7 +599,9 @@ public sealed class WikiQuestRefreshService
         text = Regex.Replace(text, @"<ref\b[^>]*>.*?</ref>|<ref\b[^>]*/>", " ", RegexOptions.IgnoreCase | RegexOptions.Singleline);
         text = Regex.Replace(text, @"<br\s*/?>", " ", RegexOptions.IgnoreCase);
         text = Regex.Replace(text, @"\[\[(?<target>[^\]|]+)(?:\|(?<label>[^\]]+))?\]\]", match =>
-            match.Groups["label"].Success ? match.Groups["label"].Value : match.Groups["target"].Value);
+            preferLinkTarget || !match.Groups["label"].Success
+                ? match.Groups["target"].Value
+                : match.Groups["label"].Value);
         text = Regex.Replace(text, @"\{\{[^{}]*\}\}", " ");
         text = Regex.Replace(text, @"<[^>]+>", " ");
         text = text.Replace("'''", string.Empty).Replace("''", string.Empty);
@@ -621,7 +624,7 @@ public sealed class WikiQuestRefreshService
     private static HttpRequestMessage CreateWikiRequest(string url)
     {
         var request = new HttpRequestMessage(HttpMethod.Get, url);
-        request.Headers.UserAgent.ParseAdd("TarkovHelper/1.5.28 (+English-Fandom-Wiki quest sync)");
+        request.Headers.UserAgent.ParseAdd("TarkovHelper/1.5.29 (+English-Fandom-Wiki quest sync)");
         return request;
     }
 
@@ -634,7 +637,7 @@ public sealed class WikiQuestRefreshService
             Uri.EscapeDataString(page);
 
         using var request = new HttpRequestMessage(HttpMethod.Get, apiUrl);
-        request.Headers.UserAgent.ParseAdd("TarkovHelper/1.5.28 (+official wiki sync)");
+        request.Headers.UserAgent.ParseAdd("TarkovHelper/1.5.29 (+official wiki sync)");
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
 
@@ -1281,10 +1284,18 @@ public sealed class WikiQuestRefreshService
             insert.Parameters.AddWithValue("@id", objectiveId);
             insert.Parameters.AddWithValue("@questId", questId);
             insert.Parameters.AddWithValue("@sort", sort);
-            insert.Parameters.AddWithValue("@type", metadata?.ObjectiveType ?? InferObjectiveType(objective));
+            var inferredType = InferObjectiveType(rawObjective);
+            insert.Parameters.AddWithValue(
+                "@type",
+                inferredType != "Custom"
+                    ? inferredType
+                    : metadata?.ObjectiveType ?? "Custom");
             insert.Parameters.AddWithValue("@description", objective);
             AddNullable(insert, "@targetType", metadata?.TargetType);
-            AddNullable(insert, "@targetCount", metadata?.TargetCount ?? InferTargetCount(rawObjective));
+            AddNullable(
+                insert,
+                "@targetCount",
+                WikiQuestMetadataParser.ParseObjectiveCount(rawObjective) ?? metadata?.TargetCount);
             AddNullable(insert, "@itemId", metadata?.ItemId);
             AddNullable(insert, "@itemName", metadata?.ItemName);
             var requiresFir = metadata?.RequiresFir == true ||
@@ -1425,7 +1436,7 @@ public sealed class WikiQuestRefreshService
             return 0;
         }
 
-        var parsed = WikiQuestMetadataParser.ParseRequiredItems(candidateObjectives, itemCatalog);
+        var parsed = WikiQuestMetadataParser.ParseRequiredItems(row.RawObjectiveTexts, itemCatalog);
 
         // Only replace the existing item rows when the Wiki objectives produced a
         // complete, resolvable item set. This protects richer structured rows from
@@ -1523,21 +1534,13 @@ public sealed class WikiQuestRefreshService
     {
         var value = objective.ToLowerInvariant();
         if (Regex.IsMatch(value, @"\b(eliminate|kill)\b") || value.Contains("처치")) return "Kill";
-        if (Regex.IsMatch(value, @"\b(stash|plant)\b") || value.Contains("숨기") || value.Contains("설치")) return "Stash";
+        if (Regex.IsMatch(value, @"\b(stash|plant|place)\b") || value.Contains("숨기") || value.Contains("설치")) return "Stash";
         if (Regex.IsMatch(value, @"\b(hand over|deliver)\b") || value.Contains("전달")) return "HandOver";
         if (Regex.IsMatch(value, @"\b(find|obtain|acquire)\b") || value.Contains("획득") || value.Contains("찾")) return "Collect";
         if (Regex.IsMatch(value, @"\b(mark)\b") || value.Contains("표시")) return "Mark";
         if (Regex.IsMatch(value, @"\b(survive|extract|transit)\b") || value.Contains("탈출") || value.Contains("환승")) return "Survive";
         if (Regex.IsMatch(value, @"\b(visit|locate|scout|check|reach)\b") || value.Contains("방문") || value.Contains("정찰")) return "Visit";
         return "Custom";
-    }
-
-    private static int? InferTargetCount(string objective)
-    {
-        var match = Regex.Match(objective ?? string.Empty, @"\b(?<count>\d{1,4})\b");
-        return match.Success && int.TryParse(match.Groups["count"].Value, out var count)
-            ? count
-            : null;
     }
 
     private static string? DbString(SqliteDataReader reader, int index) =>

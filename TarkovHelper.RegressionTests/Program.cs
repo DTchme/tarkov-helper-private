@@ -277,7 +277,10 @@ Run("English Wiki objectives produce complete item requirements", () =>
     {
         new WikiItemCatalogEntry("p22", "P22 stimulant injector"),
         new WikiItemCatalogEntry("xtg", "XTG-12 antidote injector"),
-        new WikiItemCatalogEntry("obdolbos", "Obdolbos cocktail injector")
+        new WikiItemCatalogEntry("obdolbos", "Obdolbos cocktail injector"),
+        new WikiItemCatalogEntry("roubles", "Roubles"),
+        new WikiItemCatalogEntry("v3", "Secure Flash drive V3"),
+        new WikiItemCatalogEntry("svds", "SVDS 7.62x54R sniper rifle")
     };
     var items = WikiQuestMetadataParser.ParseRequiredItems(new[]
     {
@@ -285,16 +288,32 @@ Run("English Wiki objectives produce complete item requirements", () =>
         "Hand over 5 found in raid XTG-12 antidote injectors",
         "Stash an Obdolbos cocktail injector in the first location",
         "Stash an Obdolbos cocktail injector in the second location",
-        "Stash an Obdolbos cocktail injector in the third location"
+        "Stash an Obdolbos cocktail injector in the third location",
+        "Hand over 1,000,000 Roubles to Mechanic",
+        "Obtain Secure Flash drive V3 on Lighthouse",
+        "Hand over Secure Flash drive V3 to Mechanic",
+        "Hand over the 4 found in raid SVDS 7.62x54R sniper rifles"
     }, catalog);
 
-    Assert(items.Count == 3, "the three Invasive Therapy item types must be resolved");
+    Assert(items.Count == 6, "all Invasive Therapy and Make Amends item types must be resolved");
     Assert(items.Single(item => item.ItemId == "p22").Count == 5, "P22 count must be five");
     Assert(items.Single(item => item.ItemId == "p22").RequiresFir, "P22 must require FIR");
     Assert(items.Single(item => item.ItemId == "xtg").Count == 5, "XTG-12 count must be five");
     var obd = items.Single(item => item.ItemId == "obdolbos");
     Assert(obd.Count == 3 && obd.RequirementType == "Stash",
         "three individual Obdolbos stash goals must aggregate to three");
+    Assert(items.Single(item => item.ItemId == "roubles").Count == 1_000_000,
+        "Make Amends - Buyout must require one million roubles");
+    var v3 = items.Single(item => item.ItemId == "v3");
+    Assert(v3.Count == 1 && v3.RequiresFir,
+        "the Make Amends V3 flash drive must be inferred from its obtain and hand-over objectives");
+    var svds = items.Single(item => item.ItemId == "svds");
+    Assert(svds.Count == 4 && svds.RequiresFir,
+        "Make Amends - Equipment must require four FIR SVDS rifles");
+    Assert(WikiQuestMetadataParser.ParseObjectiveCount("Eliminate 25 Raiders on Reserve") == 25,
+        "explicit kill counts must be parsed");
+    Assert(WikiQuestMetadataParser.ParseObjectiveCount("Obtain Secure Flash drive V3 on Lighthouse") == null,
+        "the V3 model suffix must never be mistaken for an objective count");
 });
 
 Run("Wiki objective IDs recover from database-wide collisions", () =>
@@ -744,9 +763,94 @@ Run("packaged quest database contains no excluded rows or orphaned links", () =>
             FROM WikiQuestMetadata metadata
             JOIN Quests quest ON quest.Id=metadata.QuestId
             WHERE quest.NameEN='Invasive Therapy'
-              AND metadata.HasUnverifiedRequirements=0
-              AND COALESCE(metadata.RequirementNotes, '') NOT LIKE '%Loyalty Level 3%'") == 1,
-        "Invasive Therapy must not retain the loyalty requirement removed from the current English Wiki");
+              AND metadata.HasUnverifiedRequirements=1
+              AND metadata.RequirementNotes LIKE '%Loyalty Level 3%Therapist%'") == 1,
+        "Invasive Therapy must retain the Therapist loyalty requirement restored by the current English Wiki");
+
+    Assert(ScalarCount(connection, @"
+            SELECT COUNT(*) FROM Quests
+            WHERE NameEN IN (
+                'Make Amends', 'Make Amends - Buyout', 'Make Amends - Equipment',
+                'Make Amends - Quarantine', 'Make Amends - Security',
+                'Make Amends - Software', 'Make Amends - Sweep Up')") == 7,
+        "the complete seven-quest Make Amends chain must be packaged");
+    Assert(ScalarCount(connection, @"
+            SELECT COUNT(*) FROM QuestObjectives objective
+            JOIN Quests quest ON quest.Id=objective.QuestId
+            WHERE quest.NameEN='Make Amends'") == 4,
+        "Make Amends must contain the four current Wiki objectives");
+    Assert(ScalarCount(connection, @"
+            SELECT COUNT(*) FROM QuestRequiredItems item
+            JOIN Quests quest ON quest.Id=item.QuestId
+            WHERE quest.NameEN='Make Amends'
+              AND item.ItemName='Secure Flash drive V3'
+              AND item.Count=1
+              AND item.RequiresFIR=1
+              AND item.RequirementType='Handover'") == 1,
+        "Make Amends must require exactly one FIR Secure Flash drive V3");
+    Assert(ScalarCount(connection, @"
+            SELECT COUNT(*) FROM QuestRequiredItems item
+            JOIN Quests quest ON quest.Id=item.QuestId
+            WHERE quest.NameEN='Make Amends'") == 1,
+        "obsolete Make Amends key requirements must not remain");
+    Assert(ScalarCount(connection, @"
+            SELECT COUNT(*) FROM QuestRequiredItems item
+            JOIN Quests quest ON quest.Id=item.QuestId
+            WHERE quest.NameEN='Make Amends - Buyout'
+              AND item.ItemName='Roubles'
+              AND item.Count=1000000
+              AND item.RequirementType='Handover'") == 1,
+        "Make Amends - Buyout must require 1,000,000 RUB");
+    Assert(ScalarCount(connection, @"
+            SELECT COUNT(*) FROM QuestRequiredItems item
+            JOIN Quests quest ON quest.Id=item.QuestId
+            WHERE quest.NameEN='Make Amends - Equipment'
+              AND item.ItemName LIKE 'SVDS%'
+              AND item.Count=4
+              AND item.RequiresFIR=1
+              AND item.RequirementType='Handover'") == 1,
+        "Make Amends - Equipment must require four FIR SVDS rifles");
+    Assert(ScalarCount(connection, @"
+            SELECT COUNT(*) FROM QuestRequiredItems item
+            JOIN Quests quest ON quest.Id=item.QuestId
+            WHERE quest.NameEN='Make Amends - Security'
+              AND item.ItemName LIKE '%Camera%'
+              AND item.Count=4
+              AND item.RequirementType='Stash'") == 1,
+        "Make Amends - Security must require four camera placements");
+    Assert(ScalarCount(connection, @"
+            SELECT COUNT(*) FROM QuestRequiredItems item
+            JOIN Quests quest ON quest.Id=item.QuestId
+            WHERE quest.NameEN='Make Amends - Software'
+              AND item.ItemName='Secure Flash drive'
+              AND item.Count=15
+              AND item.RequiresFIR=1
+              AND item.RequirementType='Handover'") == 1,
+        "Make Amends - Software must require fifteen FIR Secure Flash drives");
+    Assert(ScalarCount(connection, @"
+            SELECT COUNT(*) FROM QuestObjectives objective
+            JOIN Quests quest ON quest.Id=objective.QuestId
+            WHERE quest.NameEN='Make Amends - Sweep Up'
+              AND objective.ObjectiveType='Kill'
+              AND objective.TargetCount=25") == 1,
+        "Make Amends - Sweep Up must require 25 Raider eliminations");
+    Assert(ScalarCount(connection, @"
+            SELECT COUNT(*) FROM Quests
+            WHERE (NameEN='Make Amends - Buyout' AND RequiredDecodeCount=1)
+               OR (NameEN='Make Amends - Security' AND RequiredDecodeCount=2)
+               OR (NameEN='Make Amends - Software' AND RequiredDecodeCount=3)") == 3,
+        "the three decoded transmitter branches must use decode counts 1, 2, and 3");
+    Assert(ScalarCount(connection, @"
+            SELECT COUNT(*) FROM QuestRequirements requirement
+            JOIN Quests quest ON quest.Id=requirement.QuestId
+            JOIN Quests required ON required.Id=requirement.RequiredQuestId
+            WHERE quest.NameEN='Make Amends'
+              AND required.NameEN IN (
+                  'Make Amends - Equipment',
+                  'Make Amends - Quarantine',
+                  'Make Amends - Sweep Up')
+              AND requirement.GroupId > 0") == 3,
+        "Make Amends must retain all three alternative branch prerequisites");
 });
 
 Run("incomplete JSON is carried into the next chunk", () =>

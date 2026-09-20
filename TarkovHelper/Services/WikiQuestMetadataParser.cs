@@ -137,6 +137,10 @@ public static class WikiQuestMetadataParser
         IEnumerable<string> rawObjectives,
         IEnumerable<WikiItemCatalogEntry> itemCatalog)
     {
+        var objectives = rawObjectives
+            .Select(CleanWikiText)
+            .Where(objective => !string.IsNullOrWhiteSpace(objective))
+            .ToList();
         var catalog = itemCatalog
             .Where(item => !string.IsNullOrWhiteSpace(item.Id) && !string.IsNullOrWhiteSpace(item.Name))
             .Select(item => new CatalogItem(item.Id, item.Name, Normalize(item.Name)))
@@ -145,9 +149,8 @@ public static class WikiQuestMetadataParser
             .ToList();
         var parsed = new List<WikiRequiredItem>();
 
-        foreach (var rawObjective in rawObjectives)
+        foreach (var cleanObjective in objectives)
         {
-            var cleanObjective = CleanWikiText(rawObjective);
             var actionMatch = ItemActionRegex.Match(cleanObjective);
             if (!actionMatch.Success)
                 continue;
@@ -158,15 +161,16 @@ public static class WikiQuestMetadataParser
             if (matchedItem == null)
                 continue;
 
-            var countMatch = Regex.Match(
-                cleanObjective[actionMatch.Index..],
-                @"^(?:hand\s+over|deliver|give|turn\s+in|stash|plant|place)\s+(?:any\s+)?(?<count>\d[\d,]*)?",
-                RegexOptions.IgnoreCase);
-            var count = countMatch.Success &&
-                        int.TryParse(countMatch.Groups["count"].Value.Replace(",", string.Empty), out var parsedCount)
-                ? Math.Max(1, parsedCount)
-                : 1;
-            var requiresFir = Regex.IsMatch(cleanObjective, @"\bfound\s+in\s+raid\b|\bin\s+raid\b", RegexOptions.IgnoreCase);
+            var count = ParseObjectiveCount(cleanObjective[actionMatch.Index..]) ?? 1;
+            var requiresFir = Regex.IsMatch(
+                                  cleanObjective,
+                                  @"\bfound\s+in\s+raid\b|\bin\s+raid\b",
+                                  RegexOptions.IgnoreCase) ||
+                              objectives.Any(objective =>
+                                  Regex.IsMatch(objective, @"^(?:obtain|find)\b", RegexOptions.IgnoreCase) &&
+                                  Normalize(objective).Contains(
+                                      matchedItem.NormalizedName,
+                                      StringComparison.OrdinalIgnoreCase));
             var action = Regex.Replace(actionMatch.Groups["action"].Value, @"\s+", " ").ToLowerInvariant();
             var requirementType = action is "stash" or "plant" or "place" ? "Stash" : "Handover";
 
@@ -207,6 +211,22 @@ public static class WikiQuestMetadataParser
 
     public static bool IsRequiredItemObjective(string? rawObjective) =>
         !string.IsNullOrWhiteSpace(rawObjective) && ItemActionRegex.IsMatch(CleanWikiText(rawObjective));
+
+    public static int? ParseObjectiveCount(string? rawObjective)
+    {
+        var objective = CleanWikiText(rawObjective ?? string.Empty);
+        var match = Regex.Match(
+            objective,
+            @"^(?:hand\s+over|deliver|give|turn\s+in|stash|plant|place|eliminate|kill|obtain|find|mark)\s+(?:(?:any|the|a|an)\s+)?(?<count>\d[\d,]*)\b",
+            RegexOptions.IgnoreCase);
+        if (!match.Success ||
+            !int.TryParse(match.Groups["count"].Value.Replace(",", string.Empty), out var count))
+        {
+            return null;
+        }
+
+        return Math.Max(1, count);
+    }
 
     private static string CleanWikiText(string value)
     {
