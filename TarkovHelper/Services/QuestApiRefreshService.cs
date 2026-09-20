@@ -164,7 +164,7 @@ public sealed class QuestApiRefreshService
             try
             {
                 using var request = new HttpRequestMessage(HttpMethod.Get, uri);
-                request.Headers.UserAgent.ParseAdd("TarkovHelper/1.5.29");
+                request.Headers.UserAgent.ParseAdd("TarkovHelper/1.5.30");
                 using var response = await _httpClient.SendAsync(request, cancellationToken);
                 var body = await response.Content.ReadAsStringAsync(cancellationToken);
                 if (response.IsSuccessStatusCode)
@@ -221,7 +221,7 @@ public sealed class QuestApiRefreshService
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, TrackerQuestEndpoint);
-            request.Headers.UserAgent.ParseAdd("TarkovHelper/1.5.29");
+            request.Headers.UserAgent.ParseAdd("TarkovHelper/1.5.30");
             using var response = await _httpClient.SendAsync(request, cancellationToken);
             var json = await response.Content.ReadAsStringAsync(cancellationToken);
             if (!response.IsSuccessStatusCode)
@@ -916,6 +916,10 @@ public sealed class QuestApiRefreshService
                 command.Parameters.AddWithValue("@updatedAt", updatedAt);
                 optionalCount += await command.ExecuteNonQueryAsync(cancellationToken);
             }
+
+            // json.tarkov.dev/TarkovTracker can retain pre-rework Lighthouse markers.
+            // Apply the current English Wiki locations before committing the refresh.
+            await V3FlashDriveLocationPolicy.ApplyAsync(connection, transaction, cancellationToken);
 
             await transaction.CommitAsync(cancellationToken);
             return new RewriteStats(
