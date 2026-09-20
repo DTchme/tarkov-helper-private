@@ -1,1 +1,1 @@
-1.5.29-make-amends-wiki-fix
+1.5.30-make-amends-location-fix

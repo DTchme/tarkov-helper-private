@@ -62,6 +62,20 @@ if (args.Length == 2 &&
 }
 
 if (args.Length == 2 &&
+    args[0].Equals("--apply-v3-location-correction", StringComparison.OrdinalIgnoreCase))
+{
+    using var connection = new SqliteConnection($"Data Source={args[1]};Mode=ReadWrite");
+    connection.Open();
+    using var transaction = connection.BeginTransaction();
+    var changed = V3FlashDriveLocationPolicy.ApplyAsync(connection, transaction)
+        .GetAwaiter()
+        .GetResult();
+    transaction.Commit();
+    Console.WriteLine($"Corrected {changed} Secure Flash drive V3 location objectives.");
+    return 0;
+}
+
+if (args.Length == 2 &&
     args[0].Equals("--validate-wiki-lighthouse-data", StringComparison.OrdinalIgnoreCase))
 {
     using var connection = new SqliteConnection($"Data Source={args[1]};Mode=ReadOnly");
@@ -205,6 +219,35 @@ if (args.Length == 2 &&
     Console.WriteLine($"Removed {removed} excluded quests from {databasePath}");
     return 0;
 }
+
+Run("V3 flash drive location policy targets acquisition objectives only", () =>
+{
+    Assert(V3FlashDriveLocationPolicy.IsTargetObjective(
+            V3FlashDriveLocationPolicy.MakeAmendsBsgId,
+            "Make Amends",
+            "Collect",
+            "Obtain the V3 flash drive on Lighthouse",
+            "Secure Flash drive V3"),
+        "the Make Amends acquisition objective must receive the current Wiki locations");
+    Assert(!V3FlashDriveLocationPolicy.IsTargetObjective(
+            V3FlashDriveLocationPolicy.MakeAmendsBsgId,
+            "Make Amends",
+            "HandOver",
+            "Hand over the V3 flash drive",
+            "Secure Flash drive V3"),
+        "the V3 hand-over objective must not create duplicate map markers");
+    Assert(!V3FlashDriveLocationPolicy.IsTargetObjective(
+            null,
+            "Unrelated Quest",
+            "Collect",
+            "Obtain a V3 flash drive",
+            "Secure Flash drive V3"),
+        "an unrelated quest must not receive Make Amends markers");
+    using var points = System.Text.Json.JsonDocument.Parse(
+        V3FlashDriveLocationPolicy.OptionalPointsJson);
+    Assert(points.RootElement.GetArrayLength() == 2,
+        "the current Wiki guide must produce one chalet marker and one tennis-court marker");
+});
 
 Run("supported static tarkov.dev feed preserves current Supervisor objectives", () =>
 {
@@ -779,6 +822,46 @@ Run("packaged quest database contains no excluded rows or orphaned links", () =>
             JOIN Quests quest ON quest.Id=objective.QuestId
             WHERE quest.NameEN='Make Amends'") == 4,
         "Make Amends must contain the four current Wiki objectives");
+    Assert(ScalarCount(connection, @"
+            SELECT COUNT(*) FROM QuestObjectives objective
+            JOIN Quests quest ON quest.Id=objective.QuestId
+            WHERE quest.NameEN='Make Amends'
+              AND objective.ObjectiveType='Collect'
+              AND objective.Description LIKE '%V3%'
+              AND objective.MapName='Lighthouse'
+              AND objective.LocationPoints IS NULL
+              AND json_array_length(objective.OptionalPoints)=2
+              AND objective.LocationName LIKE '%샬레%테니스%' ") == 1,
+        "Make Amends must use the two current Wiki V3 drive areas");
+    Assert(ScalarCount(connection, @"
+            SELECT COUNT(*)
+            FROM QuestObjectives objective
+            JOIN Quests quest ON quest.Id=objective.QuestId
+            JOIN json_each(objective.OptionalPoints) point
+            WHERE quest.NameEN='Make Amends'
+              AND objective.ObjectiveType='Collect'
+              AND objective.Description LIKE '%V3%'
+              AND (
+                  (ABS(json_extract(point.value, '$.X') - (-123.6628770633024)) < 0.000001
+                   AND ABS(json_extract(point.value, '$.Z') - 104.05403435728749) < 0.000001)
+                  OR
+                  (ABS(json_extract(point.value, '$.X') - (-71.172)) < 0.000001
+                   AND ABS(json_extract(point.value, '$.Z') - 131.3706) < 0.000001)
+              )") == 2,
+        "Make Amends must mark the southern chalet and tennis-court tent");
+    Assert(ScalarCount(connection, @"
+            SELECT COUNT(*)
+            FROM QuestObjectives objective
+            JOIN Quests quest ON quest.Id=objective.QuestId
+            WHERE quest.NameEN IN (
+                    'Getting Acquainted',
+                    'Make Amends',
+                    'To the Light - Getting Acquainted')
+              AND objective.Description LIKE '%V3%'
+              AND objective.ObjectiveType<>'HandOver'
+              AND objective.LocationPoints IS NULL
+              AND json_array_length(objective.OptionalPoints)=2") == 3,
+        "all V3 drive acquisition quests must share the corrected Wiki locations");
     Assert(ScalarCount(connection, @"
             SELECT COUNT(*) FROM QuestRequiredItems item
             JOIN Quests quest ON quest.Id=item.QuestId
