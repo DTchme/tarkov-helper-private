@@ -36,17 +36,17 @@ public class SettingsService
     private const string KeyLoggingLevel = "logging.level";
     private const string KeyLoggingMaxDays = "logging.maxDays";
     private const string KeyLoggingMaxSizeMB = "logging.maxSizeMB";
-    private const string KeyPlayerLevel = "app.playerLevel";
-    private const string KeyScavRep = "app.scavRep";
+    internal const string KeyPlayerLevel = "app.playerLevel";
+    internal const string KeyScavRep = "app.scavRep";
     private const string KeyShowLevelLockedQuests = "app.showLevelLockedQuests";
     private const string KeyHideWipeWarning = "app.hideWipeWarning";
     private const string KeySyncDaysRange = "app.syncDaysRange";
     private const string KeyBaseFontSize = "app.baseFontSize";
-    private const string KeyDspDecodeCount = "app.dspDecodeCount";
+    internal const string KeyDspDecodeCount = "app.dspDecodeCount";
     private const string KeyPlayerFaction = "app.playerFaction";
     private const string KeyHasEodEdition = "app.hasEodEdition";
     private const string KeyHasUnheardEdition = "app.hasUnheardEdition";
-    private const string KeyPrestigeLevel = "app.prestigeLevel";
+    internal const string KeyPrestigeLevel = "app.prestigeLevel";
     private const string KeyFontFamilyName = "app.fontFamilyName";
     private const string KeyLastProfileType = "app.lastProfileType";
 
@@ -133,7 +133,7 @@ public class SettingsService
     /// Prestige level constants
     /// </summary>
     public const int MinPrestigeLevel = 0;
-    public const int MaxPrestigeLevel = 5;
+    public const int MaxPrestigeLevel = 6;
     public const int DefaultPrestigeLevel = 0;
 
     /// <summary>
