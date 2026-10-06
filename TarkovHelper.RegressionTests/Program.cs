@@ -537,6 +537,122 @@ Run("startup initialization applies the complete database schema", () =>
         Assert(SettingsService.MaxPrestigeLevel == 6,
             "the current Prestige selector must allow all six Prestige levels");
 
+        ProfileService.Instance.CurrentProfile = ProfileType.Pve;
+        SettingsService.Instance.ReloadSettings();
+
+        var automaticQuest = new TarkovTask
+        {
+            Ids = new List<string> { "automatic-quest" },
+            Name = "Automatic Quest",
+            NormalizedName = "automatic-quest",
+            Trader = "Fence",
+            RequiredScavKarma = 1
+        };
+        var rootQuest = new TarkovTask
+        {
+            Ids = new List<string> { "root-quest" },
+            Name = "Root Quest",
+            NormalizedName = "root-quest",
+            Trader = "Prapor"
+        };
+        var linkedQuest = new TarkovTask
+        {
+            Ids = new List<string> { "linked-quest" },
+            Name = "Linked Quest",
+            NormalizedName = "linked-quest",
+            Trader = "Prapor",
+            TaskRequirements = new List<TaskRequirement>
+            {
+                new()
+                {
+                    TaskId = "root-quest",
+                    TaskNormalizedName = "root-quest",
+                    Status = new List<string> { "active" }
+                }
+            }
+        };
+        var alternativeQuest = new TarkovTask
+        {
+            Ids = new List<string> { "alternative-quest" },
+            Name = "Alternative Quest",
+            NormalizedName = "alternative-quest",
+            Trader = "Therapist",
+            AlternativeQuests = new List<string> { "another-choice" }
+        };
+        var skillQuest = new TarkovTask
+        {
+            Ids = new List<string> { "skill-quest" },
+            Name = "Skill Quest",
+            NormalizedName = "skill-quest",
+            Trader = "Mechanic",
+            RequiredSkills = new List<SkillRequirement>
+            {
+                new() { SkillNormalizedName = "strength", Level = 10 }
+            }
+        };
+        var unresolvedQuest = new TarkovTask
+        {
+            Ids = new List<string> { "unresolved-quest" },
+            Name = "Unresolved Quest",
+            NormalizedName = "unresolved-quest",
+            Trader = "Ragman",
+            UnverifiedRequirementNotes = "Loyalty Level 2"
+        };
+
+        QuestProgressService.ResetInstance();
+        var questProgress = QuestProgressService.Instance;
+        questProgress.InitializeAsync(
+                new List<TarkovTask>
+                {
+                    automaticQuest,
+                    rootQuest,
+                    linkedQuest,
+                    alternativeQuest,
+                    skillQuest,
+                    unresolvedQuest
+                },
+                ProfileType.Pve)
+            .GetAwaiter()
+            .GetResult();
+
+        Assert(questProgress.GetStatus(automaticQuest) == QuestStatus.LevelLocked,
+            "a standalone quest must remain locked until its Fence reputation requirement is met");
+        SettingsService.Instance.ScavRep = 1;
+        Assert(questProgress.GetStatus(automaticQuest) == QuestStatus.Active,
+            "a standalone quest must become active when its tracked reputation requirement is met");
+        Assert(questProgress.GetStatus(rootQuest) == QuestStatus.Active,
+            "a standalone quest without extra requirements must be inferred as active");
+        Assert(questProgress.GetStatus(linkedQuest) == QuestStatus.Available,
+            "a linked quest must wait for a log or manual confirmation even when its prerequisite is satisfied");
+        Assert(questProgress.GetStatus(alternativeQuest) == QuestStatus.Available,
+            "a mutually exclusive quest choice must never be auto-activated");
+        Assert(questProgress.GetStatus(skillQuest) == QuestStatus.Available,
+            "an untracked skill requirement must never be auto-activated");
+        Assert(questProgress.GetStatus(unresolvedQuest) == QuestStatus.Available,
+            "an unresolved Wiki requirement must never be auto-activated");
+
+        questProgress.ApplyQuestChangesBatchAsync(
+                new[] { (linkedQuest, QuestStatus.Done) },
+                profileType: ProfileType.Pve)
+            .GetAwaiter()
+            .GetResult();
+        questProgress.MarkQuestActiveAsync(linkedQuest).GetAwaiter().GetResult();
+        Assert(questProgress.GetStatus(linkedQuest) == QuestStatus.Active,
+            "the manual in-progress action must correct a completed quest back to active");
+
+        using (var activeVerified = new SqliteConnection($"Data Source={databasePath};Mode=ReadOnly"))
+        {
+            activeVerified.Open();
+            Assert(
+                ScalarCount(activeVerified,
+                    "SELECT COUNT(*) FROM QuestProgress WHERE Id='linked-quest' AND ProfileType=1 AND Status='Active'") == 1,
+                "the manual in-progress correction must be persisted for the current profile");
+            Assert(
+                ScalarCount(activeVerified,
+                    "SELECT COUNT(*) FROM QuestProgress WHERE Id='linked-quest' AND ProfileType=0") == 0,
+                "the manual in-progress correction must not leak into PVP");
+        }
+
         var archive = QuestLogArchiveService.Instance;
         archive.InitializeAsync().GetAwaiter().GetResult();
         archive.ArchiveEventsAsync(new[]

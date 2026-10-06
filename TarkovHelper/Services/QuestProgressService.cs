@@ -219,6 +219,26 @@ namespace TarkovHelper.Services
         }
 
         /// <summary>
+        /// Determines whether a quest can safely be inferred as accepted from the
+        /// locally tracked requirements alone. Quest chains, mutually exclusive
+        /// branches, skill requirements, and unresolved Wiki requirements still
+        /// need a game-log event or an explicit manual action.
+        /// </summary>
+        internal static bool CanInferActiveFromRequirements(TarkovTask task)
+        {
+            var hasTaskRequirements = task.TaskRequirements?.Count > 0;
+            var hasLegacyPrerequisites = task.Previous?.Count > 0;
+            var hasAlternativeBranches = task.AlternativeQuests?.Count > 0;
+            var hasUntrackedSkillRequirements = task.RequiredSkills?.Count > 0;
+
+            return !hasTaskRequirements &&
+                   !hasLegacyPrerequisites &&
+                   !hasAlternativeBranches &&
+                   !hasUntrackedSkillRequirements &&
+                   !task.HasUnverifiedRequirements;
+        }
+
+        /// <summary>
         /// Get all alternative quest groups (for sync selection UI)
         /// Returns groups of mutually exclusive quests that need user selection
         /// </summary>
@@ -323,9 +343,13 @@ namespace TarkovHelper.Services
                 if (!IsScavKarmaRequirementMet(task))
                     return QuestStatus.LevelLocked;  // Use LevelLocked status for karma-locked quests too
 
-                // Prerequisites alone only tell us that a quest can be accepted. Active is
-                // reserved for a Started event from the game log or manual in-progress input.
-                return QuestStatus.Available;
+                // Standalone quests can be inferred as accepted once every condition that
+                // the helper can evaluate (level, Fence reputation, edition, faction,
+                // Prestige, and DSP state) is satisfied. Chained/branching or otherwise
+                // unverifiable quests remain Available until the log or user confirms them.
+                return CanInferActiveFromRequirements(task)
+                    ? QuestStatus.Active
+                    : QuestStatus.Available;
             }
             finally
             {
@@ -948,6 +972,20 @@ namespace TarkovHelper.Services
                 System.Diagnostics.Debug.WriteLine($"[QuestProgressService] Batch saved {changedItems.Count} quest changes");
                 ProgressChanged?.Invoke(this, EventArgs.Empty);
             }
+        }
+
+        /// <summary>
+        /// Explicitly marks one quest as currently in progress. Manual correction is
+        /// allowed to replace a stale completed/failed state, matching the existing
+        /// multi-quest correction workflow.
+        /// </summary>
+        public Task MarkQuestActiveAsync(TarkovTask task)
+        {
+            return ApplyQuestChangesBatchAsync(
+                new[] { (task, QuestStatus.Active) },
+                applyAlternativeConsequences: false,
+                profileType: _loadedProfile,
+                allowTerminalActiveOverride: true);
         }
 
         /// <summary>

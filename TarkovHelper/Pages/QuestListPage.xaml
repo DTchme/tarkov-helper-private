@@ -37,6 +37,7 @@
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
                     <!-- Trader Icon Placeholder -->
@@ -68,8 +69,17 @@
                                    Foreground="White" FontWeight="SemiBold"/>
                     </Border>
 
+                    <!-- In-progress Button -->
+                    <Button Grid.Column="3" Content="진행 중" Padding="8,4"
+                            Margin="0,0,6,0"
+                            FontSize="{DynamicResource FontSizeTiny}" MinWidth="58"
+                            Click="InProgressButton_Click"
+                            Tag="{Binding}"
+                            ToolTip="이 퀘스트를 현재 진행 중으로 저장"
+                            Visibility="{Binding InProgressButtonVisibility}"/>
+
                     <!-- Complete Button -->
-                    <Button Grid.Column="3" Content="완료" Padding="8,4"
+                    <Button Grid.Column="4" Content="완료" Padding="8,4"
                             FontSize="{DynamicResource FontSizeTiny}" MinWidth="50"
                             Click="CompleteButton_Click"
                             Tag="{Binding}"
@@ -340,6 +350,9 @@
                                 <Button x:Name="BtnShowOnMap" Content="지도에서 보기" Padding="12,6"
                                         Margin="0,0,8,0" Click="BtnShowOnMap_Click"
                                         ToolTip="지도에 퀘스트 마커 표시"/>
+                                <Button x:Name="BtnInProgress" Content="진행 중 처리" Padding="12,6"
+                                        Margin="0,0,8,0" Click="BtnInProgress_Click"
+                                        ToolTip="완료 또는 실패 상태도 현재 진행 중으로 교정"/>
                                 <Button x:Name="BtnComplete" Content="완료 처리" Padding="12,6"
                                         Margin="0,0,8,0" Click="BtnComplete_Click"/>
                                 <Button x:Name="BtnReset" Content="초기화" Padding="12,6"

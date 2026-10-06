@@ -357,6 +357,9 @@ namespace TarkovHelper.Pages
                 Status = status,
                 StatusText = GetStatusText(status, task),
                 StatusBackground = GetStatusBrush(status),
+                InProgressButtonVisibility = status != QuestStatus.Active && status != QuestStatus.Unavailable
+                    ? Visibility.Visible
+                    : Visibility.Collapsed,
                 CompleteButtonVisibility = (status == QuestStatus.Available || status == QuestStatus.Active || status == QuestStatus.Locked || status == QuestStatus.LevelLocked)
                     && status != QuestStatus.Unavailable ? Visibility.Visible : Visibility.Collapsed,
                 IsKappaRequired = task.ReqKappa,
@@ -484,6 +487,9 @@ namespace TarkovHelper.Pages
                 vm.StatusToolTip = vm.Task.HasUnverifiedRequirements
                     ? $"위키에 자동 판정할 수 없는 조건이 있습니다.\n{vm.Task.UnverifiedRequirementNotes}"
                     : string.Empty;
+                vm.InProgressButtonVisibility = status != QuestStatus.Active && status != QuestStatus.Unavailable
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
                 vm.CompleteButtonVisibility = (status == QuestStatus.Available || status == QuestStatus.Active || status == QuestStatus.Locked || status == QuestStatus.LevelLocked)
                     && status != QuestStatus.Unavailable ? Visibility.Visible : Visibility.Collapsed;
             }
@@ -958,6 +964,9 @@ namespace TarkovHelper.Pages
             }
 
             // Button states
+            BtnInProgress.Visibility = status != QuestStatus.Active && status != QuestStatus.Unavailable
+                ? Visibility.Visible
+                : Visibility.Collapsed;
             BtnComplete.Visibility = status == QuestStatus.Done ? Visibility.Collapsed : Visibility.Visible;
             BtnReset.Visibility = status == QuestStatus.Done || status == QuestStatus.Failed
                 ? Visibility.Visible : Visibility.Collapsed;
@@ -968,6 +977,14 @@ namespace TarkovHelper.Pages
             if (sender is Button btn && btn.Tag is QuestViewModel vm)
             {
                 _progressService.CompleteQuest(vm.Task, true);
+            }
+        }
+
+        private async void InProgressButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is QuestViewModel vm)
+            {
+                await MarkQuestInProgressAsync(vm.Task);
             }
         }
 
@@ -1001,6 +1018,31 @@ namespace TarkovHelper.Pages
             if (selectedVm != null)
             {
                 _progressService.CompleteQuest(selectedVm.Task, true);
+            }
+        }
+
+        private async void BtnInProgress_Click(object sender, RoutedEventArgs e)
+        {
+            var selectedVm = LstQuests.SelectedItem as QuestViewModel;
+            if (selectedVm != null)
+            {
+                await MarkQuestInProgressAsync(selectedVm.Task);
+            }
+        }
+
+        private async Task MarkQuestInProgressAsync(TarkovTask task)
+        {
+            try
+            {
+                await _progressService.MarkQuestActiveAsync(task);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    $"퀘스트를 진행 중으로 저장하지 못했습니다: {ex.Message}",
+                    "진행 상태 저장 오류",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
             }
         }
 

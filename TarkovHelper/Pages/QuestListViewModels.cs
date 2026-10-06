@@ -19,6 +19,7 @@ namespace TarkovHelper.Pages
         public QuestStatus Status { get; set; }
         public string StatusText { get; set; } = string.Empty;
         public Brush StatusBackground { get; set; } = Brushes.Gray;
+        public Visibility InProgressButtonVisibility { get; set; } = Visibility.Visible;
         public Visibility CompleteButtonVisibility { get; set; } = Visibility.Visible;
         public bool IsKappaRequired { get; set; }
         public Visibility KappaBadgeVisibility => IsKappaRequired ? Visibility.Visible : Visibility.Collapsed;
