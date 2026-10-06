@@ -943,6 +943,74 @@ public sealed class UserDataDbService
         await cmd.ExecuteNonQueryAsync();
     }
 
+    /// <summary>
+    /// Atomically resets every piece of helper progress that belongs to one character
+    /// after an in-game Prestige/profile reset. Other profiles, global preferences,
+    /// editions, and faction selection are intentionally preserved.
+    /// </summary>
+    public async Task ResetProfileForPrestigeAsync(ProfileType profileType, int prestigeLevel)
+    {
+        await InitializeAsync();
+        var targetPrestige = Math.Clamp(
+            prestigeLevel,
+            SettingsService.MinPrestigeLevel,
+            SettingsService.MaxPrestigeLevel);
+
+        await _dbSemaphore.WaitAsync();
+        try
+        {
+            await using var connection = new SqliteConnection(GetConnectionString());
+            await connection.OpenAsync();
+            await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync();
+
+            foreach (var table in new[]
+                     {
+                         "QuestProgress",
+                         "ObjectiveProgress",
+                         "HideoutProgress",
+                         "ItemInventory"
+                     })
+            {
+                await using var delete = new SqliteCommand(
+                    $"DELETE FROM {table} WHERE ProfileType = @profileType",
+                    connection,
+                    transaction);
+                delete.Parameters.AddWithValue("@profileType", (int)profileType);
+                await delete.ExecuteNonQueryAsync();
+            }
+
+            var resetSettings = new Dictionary<string, string>
+            {
+                [SettingsService.KeyPlayerLevel] = SettingsService.MinPlayerLevel.ToString(),
+                [SettingsService.KeyScavRep] = "0",
+                [SettingsService.KeyDspDecodeCount] = SettingsService.DefaultDspDecodeCount.ToString(),
+                [SettingsService.KeyPrestigeLevel] = targetPrestige.ToString()
+            };
+
+            foreach (var setting in resetSettings)
+            {
+                await using var upsert = new SqliteCommand(@"
+                    INSERT INTO UserSettings (Key, ProfileType, Value)
+                    VALUES (@key, @profileType, @value)
+                    ON CONFLICT(Key, ProfileType) DO UPDATE SET Value = excluded.Value",
+                    connection,
+                    transaction);
+                upsert.Parameters.AddWithValue("@key", setting.Key);
+                upsert.Parameters.AddWithValue("@profileType", (int)profileType);
+                upsert.Parameters.AddWithValue("@value", setting.Value);
+                await upsert.ExecuteNonQueryAsync();
+            }
+
+            await transaction.CommitAsync();
+            _log.Warning(
+                $"Profile progress reset for Prestige: profile={profileType}, prestige={targetPrestige}");
+        }
+        finally
+        {
+            _dbSemaphore.Release();
+        }
+    }
+
     #endregion
 
     #region JSON Migration

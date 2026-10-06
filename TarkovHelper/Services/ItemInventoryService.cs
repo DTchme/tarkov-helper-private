@@ -7,7 +7,7 @@ namespace TarkovHelper.Services
     /// <summary>
     /// Service for managing user's item inventory quantities (FIR/Non-FIR)
     /// </summary>
-    public class ItemInventoryService
+    public class ItemInventoryService : IDisposable
     {
         private static readonly ILogger _log = Log.For<ItemInventoryService>();
         private static ItemInventoryService? _instance;
@@ -18,6 +18,7 @@ namespace TarkovHelper.Services
         /// </summary>
         public static void ResetInstance()
         {
+            _instance?.Dispose();
             _instance = null;
         }
         private ProfileType _loadedProfile = ProfileType.Pvp;
@@ -47,6 +48,18 @@ namespace TarkovHelper.Services
             {
                 SavePendingItems();
             };
+        }
+
+        public void Dispose()
+        {
+            _saveTimer?.Stop();
+            _saveTimer?.Dispose();
+            _saveTimer = null;
+            lock (_lock)
+            {
+                _pendingSaves.Clear();
+            }
+            InventoryChanged = null;
         }
 
         private void SavePendingItems()

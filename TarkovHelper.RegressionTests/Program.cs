@@ -462,6 +462,81 @@ Run("startup initialization applies the complete database schema", () =>
         Assert(File.Exists(databasePath + ".bak"), "startup must create a consistent database backup");
         verified.Dispose();
 
+        using (var seed = new SqliteConnection($"Data Source={databasePath}"))
+        {
+            seed.Open();
+            using var insert = seed.CreateCommand();
+            insert.CommandText = @"
+                INSERT INTO QuestProgress (Id, ProfileType, NormalizedName, Status, UpdatedAt)
+                    VALUES ('pve-quest', 1, 'pve quest', 'Completed', CURRENT_TIMESTAMP),
+                           ('pvp-quest', 0, 'pvp quest', 'Completed', CURRENT_TIMESTAMP);
+                INSERT INTO ObjectiveProgress (Id, ProfileType, QuestId, IsCompleted, UpdatedAt)
+                    VALUES ('pve-objective', 1, 'pve-quest', 1, CURRENT_TIMESTAMP),
+                           ('pvp-objective', 0, 'pvp-quest', 1, CURRENT_TIMESTAMP);
+                INSERT INTO HideoutProgress (StationId, ProfileType, Level, UpdatedAt)
+                    VALUES ('pve-station', 1, 3, CURRENT_TIMESTAMP),
+                           ('pvp-station', 0, 2, CURRENT_TIMESTAMP);
+                INSERT INTO ItemInventory (ItemNormalizedName, ProfileType, FirQuantity, NonFirQuantity, UpdatedAt)
+                    VALUES ('pve-item', 1, 4, 5, CURRENT_TIMESTAMP),
+                           ('pvp-item', 0, 6, 7, CURRENT_TIMESTAMP);
+                INSERT INTO UserSettings (Key, ProfileType, Value)
+                    VALUES ('app.playerLevel', 1, '44'),
+                           ('app.scavRep', 1, '7.5'),
+                           ('app.dspDecodeCount', 1, '2'),
+                           ('app.prestigeLevel', 1, '0'),
+                           ('app.playerLevel', 0, '55');";
+            insert.ExecuteNonQuery();
+        }
+
+        UserDataDbService.Instance
+            .ResetProfileForPrestigeAsync(ProfileType.Pve, 1)
+            .GetAwaiter()
+            .GetResult();
+
+        using (var resetVerified = new SqliteConnection($"Data Source={databasePath};Mode=ReadOnly"))
+        {
+            resetVerified.Open();
+            foreach (var table in new[]
+                     {
+                         "QuestProgress",
+                         "ObjectiveProgress",
+                         "HideoutProgress",
+                         "ItemInventory"
+                     })
+            {
+                Assert(
+                    ScalarCount(resetVerified, $"SELECT COUNT(*) FROM {table} WHERE ProfileType = 1") == 0,
+                    $"Prestige reset must clear PVE rows from {table}");
+                Assert(
+                    ScalarCount(resetVerified, $"SELECT COUNT(*) FROM {table} WHERE ProfileType = 0") == 1,
+                    $"Prestige reset must preserve PVP rows in {table}");
+            }
+
+            Assert(
+                ScalarCount(resetVerified,
+                    "SELECT COUNT(*) FROM UserSettings WHERE ProfileType=1 AND Key='app.playerLevel' AND Value='1'") == 1,
+                "Prestige reset must restore the PVE PMC level to 1");
+            Assert(
+                ScalarCount(resetVerified,
+                    "SELECT COUNT(*) FROM UserSettings WHERE ProfileType=1 AND Key='app.scavRep' AND Value='0'") == 1,
+                "Prestige reset must restore the PVE scav reputation to 0");
+            Assert(
+                ScalarCount(resetVerified,
+                    "SELECT COUNT(*) FROM UserSettings WHERE ProfileType=1 AND Key='app.dspDecodeCount' AND Value='0'") == 1,
+                "Prestige reset must clear the PVE DSP decode count");
+            Assert(
+                ScalarCount(resetVerified,
+                    "SELECT COUNT(*) FROM UserSettings WHERE ProfileType=1 AND Key='app.prestigeLevel' AND Value='1'") == 1,
+                "Prestige reset must store the selected PVE Prestige level");
+            Assert(
+                ScalarCount(resetVerified,
+                    "SELECT COUNT(*) FROM UserSettings WHERE ProfileType=0 AND Key='app.playerLevel' AND Value='55'") == 1,
+                "Prestige reset must preserve PVP settings");
+        }
+
+        Assert(SettingsService.MaxPrestigeLevel == 6,
+            "the current Prestige selector must allow all six Prestige levels");
+
         var archive = QuestLogArchiveService.Instance;
         archive.InitializeAsync().GetAwaiter().GetResult();
         archive.ArchiveEventsAsync(new[]

@@ -828,6 +828,7 @@ public partial class MainWindow : Window
             // 2. 백엔드 서비스 리셋 및 데이터 다시 로드
             _settingsService.ReloadSettings();
             await questProgressService.InitializeFromDbAsync(currentProfile);
+            await ObjectiveProgressService.Instance.LoadObjectiveProgressAsync();
             cancellationToken.ThrowIfCancellationRequested();
 
             // [중요] 은신처 데이터 DB로부터 명시적 로드 및 주입
@@ -1270,6 +1271,10 @@ public partial class MainWindow : Window
         // Disable buttons at min/max prestige level
         BtnPrestigeDown.IsEnabled = prestigeLevel > SettingsService.MinPrestigeLevel;
         BtnPrestigeUp.IsEnabled = prestigeLevel < SettingsService.MaxPrestigeLevel;
+
+        var isPve = ProfileService.Instance.CurrentProfile == ProfileType.Pve;
+        BtnPrestigeReset.Visibility = isPve ? Visibility.Visible : Visibility.Collapsed;
+        BtnPrestigeReset.Content = $"P{Math.Max(1, prestigeLevel)} 초기화";
     }
 
     /// <summary>
@@ -1286,6 +1291,144 @@ public partial class MainWindow : Window
     private void BtnPrestigeUp_Click(object sender, RoutedEventArgs e)
     {
         _settingsService.PrestigeLevel++;
+    }
+
+    /// <summary>
+    /// Reset only the current PVE character after an in-game Prestige/profile reset.
+    /// A verified user-data backup and a new quest-log generation protect the old run.
+    /// </summary>
+    private async void BtnPrestigeReset_Click(object sender, RoutedEventArgs e)
+    {
+        var profileType = ProfileService.Instance.CurrentProfile;
+        if (profileType != ProfileType.Pve)
+        {
+            MessageBox.Show(
+                "프레스티지 진행도 초기화는 PVE 프로필을 선택했을 때만 사용할 수 있습니다.",
+                "PVE 프로필 필요",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        var targetPrestige = Math.Max(1, _settingsService.PrestigeLevel);
+        var confirmation = MessageBox.Show(
+            $"현재 PVE 헬퍼 데이터를 프레스티지 {targetPrestige} 시작 상태로 초기화할까요?\n\n" +
+            "초기화 항목:\n" +
+            "• 퀘스트 및 세부 목표 진행도\n" +
+            "• 은신처 진행도\n" +
+            "• 헬퍼에 입력한 아이템 보유 수량\n" +
+            "• PMC 레벨(1), 스캐브 평판(0), DSP 디코드(0)\n\n" +
+            "이전 로그 기록은 별도 세대로 보관하고, PVP/PVP 시즌 데이터와 에디션·진영 설정은 유지합니다. " +
+            "실행 전에 사용자 DB 백업을 생성합니다.",
+            $"PVE 프레스티지 {targetPrestige} 초기화",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+        if (confirmation != MessageBoxResult.Yes)
+            return;
+
+        var logPath = _settingsService.LogFolderPath;
+        var wasMonitoring = _logSyncService.IsMonitoring;
+        var maintenanceGateAcquired = false;
+        var destructiveStepStarted = false;
+        string? backupPath = null;
+
+        BtnPrestigeReset.IsEnabled = false;
+        ProfileDrawer.Visibility = Visibility.Collapsed;
+        _isProfileDrawerOpen = false;
+        BtnProfile.Content = "▼ 프로필";
+
+        if (wasMonitoring)
+        {
+            _logSyncService.StopMonitoring();
+            UpdateQuestSyncUI();
+        }
+
+        ShowLoadingOverlay($"PVE 프레스티지 {targetPrestige} 진행도 백업 및 초기화 중...");
+
+        try
+        {
+            await _questLogMaintenanceGate.WaitAsync();
+            maintenanceGateAcquired = true;
+
+            backupPath = await UserDataDbService.Instance.CreateTimestampedBackupAsync(
+                $"pre-pve-prestige-{targetPrestige}");
+            if (string.IsNullOrWhiteSpace(backupPath))
+                throw new InvalidOperationException("사용자 데이터 백업을 만들지 못해 초기화를 중단했습니다.");
+
+            destructiveStepStarted = true;
+
+            // Move every event already present in the source logs into the previous
+            // generation before opening the clean post-Prestige generation.
+            if (!string.IsNullOrWhiteSpace(logPath) && Directory.Exists(logPath))
+                await _logSyncService.ArchiveExistingQuestLogsAsync(logPath);
+
+            await QuestLogArchiveService.Instance.StartNewGenerationAsync(
+                profileType,
+                $"PVE Prestige {targetPrestige} reset");
+
+            await UserDataDbService.Instance.ResetProfileForPrestigeAsync(
+                profileType,
+                targetPrestige);
+
+            await RefreshCurrentProfileDataAsync(profileType);
+            UpdateQuestSyncUI();
+
+            MessageBox.Show(
+                $"PVE 헬퍼 진행도를 프레스티지 {targetPrestige} 시작 상태로 초기화했습니다.\n\n" +
+                $"이전 데이터 백업: {backupPath}",
+                "프레스티지 초기화 완료",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            var restoreMessage = string.Empty;
+            if (destructiveStepStarted && !string.IsNullOrWhiteSpace(backupPath))
+            {
+                try
+                {
+                    await UserDataDbService.Instance.RestoreTimestampedBackupAsync(backupPath);
+                    await QuestLogArchiveService.Instance.RefreshStatsAsync();
+                    await RefreshCurrentProfileDataAsync(profileType);
+                    restoreMessage = "\n\n초기화 전 사용자 DB 백업으로 자동 복원했습니다.";
+                }
+                catch (Exception restoreEx)
+                {
+                    restoreMessage =
+                        $"\n\n자동 복원도 실패했습니다: {restoreEx.Message}\n백업 파일: {backupPath}";
+                }
+            }
+
+            HideLoadingOverlay();
+            _log.Error("PVE Prestige reset failed", ex);
+            MessageBox.Show(
+                $"프레스티지 초기화에 실패했습니다: {ex.Message}{restoreMessage}",
+                "프레스티지 초기화 오류",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+        finally
+        {
+            if (maintenanceGateAcquired)
+                _questLogMaintenanceGate.Release();
+
+            if (wasMonitoring && !string.IsNullOrWhiteSpace(logPath) && Directory.Exists(logPath))
+            {
+                try
+                {
+                    _logSyncService.StartMonitoring(logPath);
+                }
+                catch (Exception restartEx)
+                {
+                    _log.Warning(
+                        $"Failed to restart quest monitoring after Prestige reset: {restartEx.Message}");
+                }
+            }
+
+            BtnPrestigeReset.IsEnabled = true;
+            UpdateQuestSyncUI();
+            HideLoadingOverlay();
+        }
     }
 
     /// <summary>

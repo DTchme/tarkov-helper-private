@@ -310,6 +310,11 @@
                                 Padding="0" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
                                 Click="BtnPrestigeUp_Click"
                                 ToolTip="프레스티지 레벨 증가"/>
+                        <Button x:Name="BtnPrestigeReset" Content="P1 초기화"
+                                Padding="10,4" Margin="10,0,0,0"
+                                Click="BtnPrestigeReset_Click"
+                                Visibility="Collapsed"
+                                ToolTip="PVE 프레스티지 후 현재 프로필의 진행도를 백업하고 초기화"/>
                     </StackPanel>
                 </Border>
             </StackPanel>
