@@ -242,6 +242,54 @@ namespace TarkovHelper.Services
                         latestProfile = detectedProfile;
                 }
 
+                if (latestProfile != LogProfileKind.Unknown)
+                    return latestProfile;
+            }
+            catch
+            {
+                // Fall through to the companion application log. EFT 1.2 no longer
+                // includes the websocket profile marker in push-notification logs.
+            }
+
+            return await DetectLogProfileFromCompanionApplicationLogAsync(filePath);
+        }
+
+        private static async Task<LogProfileKind> DetectLogProfileFromCompanionApplicationLogAsync(
+            string notificationLogPath)
+        {
+            try
+            {
+                var directory = Path.GetDirectoryName(notificationLogPath);
+                if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
+                    return LogProfileKind.Unknown;
+
+                var latestProfile = LogProfileKind.Unknown;
+                foreach (var applicationLog in Directory
+                             .GetFiles(directory, "application*.log", SearchOption.TopDirectoryOnly)
+                             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+                {
+                    using var stream = new FileStream(
+                        applicationLog,
+                        FileMode.Open,
+                        FileAccess.Read,
+                        FileShare.ReadWrite | FileShare.Delete);
+                    using var reader = new StreamReader(stream);
+
+                    while (await reader.ReadLineAsync() is { } line)
+                    {
+                        var sessionMatch = SessionModeRegex.Match(line);
+                        if (!sessionMatch.Success)
+                            continue;
+
+                        latestProfile = sessionMatch.Groups[1].Value.ToLowerInvariant() switch
+                        {
+                            "pve" => LogProfileKind.Pve,
+                            "pvp" or "regular" => LogProfileKind.Pvp,
+                            _ => latestProfile
+                        };
+                    }
+                }
+
                 return latestProfile;
             }
             catch
@@ -719,7 +767,8 @@ namespace TarkovHelper.Services
             var checkpoint = await QuestLogArchiveService.Instance.GetFileCheckpointAsync(filePath);
             if (checkpoint != null &&
                 checkpoint.FileLength == fileInfo.Length &&
-                checkpoint.LastWriteUtcTicks == fileInfo.LastWriteTimeUtc.Ticks)
+                checkpoint.LastWriteUtcTicks == fileInfo.LastWriteTimeUtc.Ticks &&
+                checkpoint.LastSourceProfile != LogProfileKind.Unknown)
             {
                 return QuestLogIncrementalParseResult.Unchanged;
             }
@@ -732,11 +781,17 @@ namespace TarkovHelper.Services
                 bufferSize: 64 * 1024,
                 useAsync: true);
 
+            // v1.5.32 checkpointed EFT 1.2 push logs as Unknown and skipped their
+            // events. Re-read those files from the beginning once so the companion
+            // application-log fallback can recover them into the correct profile.
             var resetCursor = checkpoint == null ||
+                              checkpoint.LastSourceProfile == LogProfileKind.Unknown ||
                               checkpoint.LastReadOffset < 0 ||
                               checkpoint.LastReadOffset > stream.Length;
             var startOffset = resetCursor ? 0 : checkpoint!.LastReadOffset;
-            var initialProfile = resetCursor ? LogProfileKind.Unknown : checkpoint!.LastSourceProfile;
+            var initialProfile = resetCursor
+                ? await DetectLogProfileFromFileAsync(filePath)
+                : checkpoint!.LastSourceProfile;
             var pendingText = resetCursor ? string.Empty : checkpoint!.PendingText;
 
             stream.Seek(startOffset, SeekOrigin.Begin);
@@ -884,12 +939,9 @@ namespace TarkovHelper.Services
                 using var reader = new StreamReader(stream);
 
                 var fileName = Path.GetFileName(filePath);
-                // Full-file parsing tracks every profile switch in sequence. Tail parsing starts
-                // with the most recent profile because its preceding switch line may be outside
-                // the last 50 KB segment.
-                var sourceProfile = tailOnly
-                    ? await DetectLogProfileFromFileAsync(filePath)
-                    : LogProfileKind.Unknown;
+                // Seed both full and tail parsing from the session profile. Inline websocket
+                // markers still override this value in sequence for older mixed-profile logs.
+                var sourceProfile = await DetectLogProfileFromFileAsync(filePath);
 
                 // If tailOnly, skip to last 50KB
                 if (tailOnly && stream.Length > 50000)

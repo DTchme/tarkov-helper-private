@@ -620,8 +620,13 @@ Run("startup initialization applies the complete database schema", () =>
         SettingsService.Instance.ScavRep = 1;
         Assert(questProgress.GetStatus(automaticQuest) == QuestStatus.Active,
             "a standalone quest must become active when its tracked reputation requirement is met");
-        Assert(questProgress.GetStatus(rootQuest) == QuestStatus.Active,
-            "a standalone quest without extra requirements must be inferred as active");
+        Assert(questProgress.GetStatus(rootQuest) == QuestStatus.Available,
+            "a standalone quest without an explicit reputation requirement must not be inferred as active");
+        questProgress.ApplyQuestChangesBatchAsync(
+                new[] { (rootQuest, QuestStatus.Done) },
+                profileType: ProfileType.Pve)
+            .GetAwaiter()
+            .GetResult();
         Assert(questProgress.GetStatus(linkedQuest) == QuestStatus.Available,
             "a linked quest must wait for a log or manual confirmation even when its prerequisite is satisfied");
         Assert(questProgress.GetStatus(alternativeQuest) == QuestStatus.Available,
@@ -720,6 +725,46 @@ Run("startup initialization applies the complete database schema", () =>
         Assert(
             currentEvents.All(evt => evt.CharacterProfileId == "cccccccccccccccccccccccc"),
             "application-log profile IDs must be attached to archived events");
+
+        var eft12Folder = Path.Combine(tempRoot, "Logs", "session-1.2");
+        Directory.CreateDirectory(eft12Folder);
+        File.WriteAllText(
+            Path.Combine(eft12Folder, "application_000.log"),
+            "Session mode: Pve\n");
+        var eft12NotificationLog = Path.Combine(eft12Folder, "push-notifications_000.log");
+        File.WriteAllText(
+            eft12NotificationLog,
+            QuestJson("eft-1.2-recovered", 10, 1_700_000_022) + "\n");
+
+        // Reproduce the v1.5.32 state: the file was read to EOF but its events were
+        // discarded because the push log did not contain a wsn-pve marker.
+        var eft12File = new FileInfo(eft12NotificationLog);
+        archive.ArchiveFileEventsAsync(
+                eft12NotificationLog,
+                eft12File.Length,
+                eft12File.LastWriteTimeUtc.Ticks,
+                Array.Empty<QuestLogEvent>(),
+                eft12File.Length,
+                LogProfileKind.Unknown,
+                string.Empty)
+            .GetAwaiter()
+            .GetResult();
+
+        var recoveredScan = LogSyncService.Instance
+            .ArchiveExistingQuestLogsAsync(Path.Combine(tempRoot, "Logs"))
+            .GetAwaiter()
+            .GetResult();
+        Assert(recoveredScan.EventsAdded == 1,
+            "an unchanged EFT 1.2 log checkpointed as Unknown must be re-read and recovered");
+
+        currentEvents = archive.LoadEventsAsync(ProfileType.Pve).GetAwaiter().GetResult();
+        Assert(currentEvents.Any(evt => evt.QuestId == "eft-1.2-recovered"),
+            "the companion application log must classify an EFT 1.2 push event as PVE");
+        var recoveredCheckpoint = archive.GetFileCheckpointAsync(eft12NotificationLog)
+            .GetAwaiter()
+            .GetResult();
+        Assert(recoveredCheckpoint?.LastSourceProfile == LogProfileKind.Pve,
+            "the recovered EFT 1.2 checkpoint must persist the PVE profile cursor");
     }
     finally
     {
