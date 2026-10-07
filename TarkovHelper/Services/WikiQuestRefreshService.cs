@@ -624,7 +624,7 @@ public sealed class WikiQuestRefreshService
     private static HttpRequestMessage CreateWikiRequest(string url)
     {
         var request = new HttpRequestMessage(HttpMethod.Get, url);
-        request.Headers.UserAgent.ParseAdd("TarkovHelper/1.5.34 (+English-Fandom-Wiki quest sync)");
+        request.Headers.UserAgent.ParseAdd("TarkovHelper/1.5.35 (+English-Fandom-Wiki quest sync)");
         return request;
     }
 
@@ -637,7 +637,7 @@ public sealed class WikiQuestRefreshService
             Uri.EscapeDataString(page);
 
         using var request = new HttpRequestMessage(HttpMethod.Get, apiUrl);
-        request.Headers.UserAgent.ParseAdd("TarkovHelper/1.5.34 (+official wiki sync)");
+        request.Headers.UserAgent.ParseAdd("TarkovHelper/1.5.35 (+official wiki sync)");
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
 
@@ -1058,9 +1058,10 @@ public sealed class WikiQuestRefreshService
                 cancellationToken);
 
             // Wiki objective text is authoritative, but coordinates are supplemental data.
-            // Correct the V3 drive locations after every forced overlay so stale markers
+            // Restore curated Wiki locations after every overlay so missing or stale markers
             // cannot survive objective matching or be restored by an older API source.
             await V3FlashDriveLocationPolicy.ApplyAsync(connection, tx, cancellationToken);
+            await FuelCrisisLocationPolicy.ApplyAsync(connection, tx, cancellationToken);
 
             await tx.CommitAsync(cancellationToken);
             return new OverlayStats(added, updated, objectivesFilled, prerequisites, requiredItems, collectorCount);
