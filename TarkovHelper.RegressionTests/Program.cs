@@ -76,6 +76,20 @@ if (args.Length == 2 &&
 }
 
 if (args.Length == 2 &&
+    args[0].Equals("--apply-fuel-crisis-location-correction", StringComparison.OrdinalIgnoreCase))
+{
+    using var connection = new SqliteConnection($"Data Source={args[1]};Mode=ReadWrite");
+    connection.Open();
+    using var transaction = connection.BeginTransaction();
+    var changed = FuelCrisisLocationPolicy.ApplyAsync(connection, transaction)
+        .GetAwaiter()
+        .GetResult();
+    transaction.Commit();
+    Console.WriteLine($"Corrected {changed} Fuel Crisis location objectives.");
+    return 0;
+}
+
+if (args.Length == 2 &&
     args[0].Equals("--validate-wiki-lighthouse-data", StringComparison.OrdinalIgnoreCase))
 {
     using var connection = new SqliteConnection($"Data Source={args[1]};Mode=ReadOnly");
@@ -247,6 +261,36 @@ Run("V3 flash drive location policy targets acquisition objectives only", () =>
         V3FlashDriveLocationPolicy.OptionalPointsJson);
     Assert(points.RootElement.GetArrayLength() == 2,
         "the current Wiki guide must produce one chalet marker and one tennis-court marker");
+});
+
+Run("Fuel Crisis location policy groups all four Wiki tankers correctly", () =>
+{
+    Assert(FuelCrisisLocationPolicy.GetTargetArea(
+            "Fuel Crisis",
+            "Mark",
+            "Locate and mark any fuel tank near the power station with an MS2000 Marker on Interchange") ==
+           FuelCrisisArea.PowerStation,
+        "the power-station objective must receive Wiki markers 1 and 3");
+    Assert(FuelCrisisLocationPolicy.GetTargetArea(
+            "Fuel Crisis",
+            "Mark",
+            "Locate and mark any fuel tank in the northern territory with an MS2000 Marker on Interchange") ==
+           FuelCrisisArea.NorthernTerritory,
+        "the northern-territory objective must receive Wiki markers 2 and 4");
+    Assert(FuelCrisisLocationPolicy.GetTargetArea(
+            "Unrelated Quest",
+            "Mark",
+            "Locate a fuel tank near the power station") == FuelCrisisArea.None,
+        "an unrelated Interchange quest must not receive Fuel Crisis markers");
+
+    using var powerPoints = System.Text.Json.JsonDocument.Parse(
+        FuelCrisisLocationPolicy.PowerStationPointsJson);
+    using var northernPoints = System.Text.Json.JsonDocument.Parse(
+        FuelCrisisLocationPolicy.NorthernTerritoryPointsJson);
+    Assert(powerPoints.RootElement.GetArrayLength() == 2,
+        "the power-station objective must expose both valid Wiki tankers");
+    Assert(northernPoints.RootElement.GetArrayLength() == 2,
+        "the northern-territory objective must expose both valid Wiki tankers");
 });
 
 Run("supported static tarkov.dev feed preserves current Supervisor objectives", () =>
