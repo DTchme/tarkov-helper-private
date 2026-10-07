@@ -729,7 +729,7 @@ Run("startup initialization applies the complete database schema", () =>
         var eft12Folder = Path.Combine(tempRoot, "Logs", "session-1.2");
         Directory.CreateDirectory(eft12Folder);
         File.WriteAllText(
-            Path.Combine(eft12Folder, "application_000.log"),
+            Path.Combine(eft12Folder, "2026.10.07_0-13-35_1.2.0.0.47888 application_000.log"),
             "Session mode: Pve\n");
         var eft12NotificationLog = Path.Combine(eft12Folder, "push-notifications_000.log");
         File.WriteAllText(

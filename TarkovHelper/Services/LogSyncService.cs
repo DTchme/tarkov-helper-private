@@ -265,7 +265,7 @@ namespace TarkovHelper.Services
 
                 var latestProfile = LogProfileKind.Unknown;
                 foreach (var applicationLog in Directory
-                             .GetFiles(directory, "application*.log", SearchOption.TopDirectoryOnly)
+                             .GetFiles(directory, "*application*.log", SearchOption.TopDirectoryOnly)
                              .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
                 {
                     using var stream = new FileStream(
@@ -337,7 +337,7 @@ namespace TarkovHelper.Services
                     _applicationLogWatcher = new FileSystemWatcher(logFolderPath)
                     {
                         NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size,
-                        Filter = "application*.log",
+                        Filter = "*application*.log",
                         IncludeSubdirectories = true,
                         EnableRaisingEvents = true
                     };
@@ -366,7 +366,7 @@ namespace TarkovHelper.Services
         {
             try
             {
-                var latestLog = Directory.GetFiles(logFolderPath, "application*.log", SearchOption.AllDirectories)
+                var latestLog = Directory.GetFiles(logFolderPath, "*application*.log", SearchOption.AllDirectories)
                     .OrderByDescending(f => File.GetLastWriteTime(f))
                     .FirstOrDefault();
 
@@ -555,7 +555,7 @@ namespace TarkovHelper.Services
             try
             {
                 // Find the most recent application log file
-                var logFiles = Directory.GetFiles(path, "application*.log", SearchOption.AllDirectories)
+                var logFiles = Directory.GetFiles(path, "*application*.log", SearchOption.AllDirectories)
                     .OrderByDescending(f => File.GetLastWriteTime(f))
                     .Take(3)  // Check last 3 log files
                     .ToList();
@@ -826,7 +826,7 @@ namespace TarkovHelper.Services
             if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
                 return new Dictionary<LogProfileKind, string>();
 
-            var applicationLogs = Directory.GetFiles(directory, "application*.log", SearchOption.TopDirectoryOnly)
+            var applicationLogs = Directory.GetFiles(directory, "*application*.log", SearchOption.TopDirectoryOnly)
                 .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
                 .ToList();
             var cache = _characterProfileCache.GetOrAdd(directory, _ => new CharacterProfileCacheEntry());
