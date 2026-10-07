@@ -231,7 +231,12 @@ namespace TarkovHelper.Services
             var hasAlternativeBranches = task.AlternativeQuests?.Count > 0;
             var hasUntrackedSkillRequirements = task.RequiredSkills?.Count > 0;
 
-            return !hasTaskRequirements &&
+            // Do not treat every standalone quest as accepted. The bundled quest data
+            // does not currently identify whether an event quest is still active, so
+            // broad inference would revive expired event quests. Automatic acceptance
+            // is limited to the explicit Fence-reputation condition the user controls.
+            return task.RequiredScavKarma.HasValue &&
+                   !hasTaskRequirements &&
                    !hasLegacyPrerequisites &&
                    !hasAlternativeBranches &&
                    !hasUntrackedSkillRequirements &&
@@ -343,10 +348,9 @@ namespace TarkovHelper.Services
                 if (!IsScavKarmaRequirementMet(task))
                     return QuestStatus.LevelLocked;  // Use LevelLocked status for karma-locked quests too
 
-                // Standalone quests can be inferred as accepted once every condition that
-                // the helper can evaluate (level, Fence reputation, edition, faction,
-                // Prestige, and DSP state) is satisfied. Chained/branching or otherwise
-                // unverifiable quests remain Available until the log or user confirms them.
+                // Only quests with an explicit Fence-reputation requirement can be
+                // inferred as accepted. Other standalone quests (including expired event
+                // quests) remain Available until the log or user confirms them.
                 return CanInferActiveFromRequirements(task)
                     ? QuestStatus.Active
                     : QuestStatus.Available;
