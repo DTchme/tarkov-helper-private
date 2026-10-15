@@ -90,6 +90,62 @@ if (args.Length == 2 &&
 }
 
 if (args.Length == 2 &&
+    args[0].Equals("--apply-metal-birds-current-identity", StringComparison.OrdinalIgnoreCase))
+{
+    using var connection = new SqliteConnection($"Data Source={args[1]};Mode=ReadWrite");
+    connection.Open();
+    using var transaction = connection.BeginTransaction();
+    var changed = MetalBirdsQuestPolicy.ApplyAsync(connection, transaction)
+        .GetAwaiter()
+        .GetResult();
+    transaction.Commit();
+    Console.WriteLine($"Corrected Metal Birds current identity ({changed} affected identity rows).");
+    return 0;
+}
+
+if (args.Length == 2 &&
+    args[0].Equals("--migrate-metal-birds-user-progress", StringComparison.OrdinalIgnoreCase))
+{
+    using var connection = new SqliteConnection($"Data Source={args[1]};Mode=ReadWrite");
+    connection.Open();
+    var changed = MetalBirdsQuestPolicy.MigrateUserProgressAsync(connection)
+        .GetAwaiter()
+        .GetResult();
+    Console.WriteLine($"Migrated Metal Birds user progress ({changed} affected rows).");
+    return 0;
+}
+
+if (args.Length == 2 &&
+    args[0].Equals("--inspect-metal-birds-user-progress", StringComparison.OrdinalIgnoreCase))
+{
+    using var connection = new SqliteConnection($"Data Source={args[1]};Mode=ReadOnly");
+    connection.Open();
+
+    static string ScalarText(SqliteConnection database, string sql)
+    {
+        using var command = database.CreateCommand();
+        command.CommandText = sql;
+        return Convert.ToString(command.ExecuteScalar()) ?? string.Empty;
+    }
+
+    var integrity = ScalarText(connection, "PRAGMA quick_check");
+    var questCount = ScalarText(connection, "SELECT COUNT(*) FROM QuestProgress");
+    var objectiveCount = ScalarText(connection, "SELECT COUNT(*) FROM ObjectiveProgress");
+    var canonical = ScalarText(connection, $@"
+        SELECT COALESCE(group_concat(ProfileType || ':' || Status || ':' || COALESCE(NormalizedName, ''), ','), '')
+        FROM QuestProgress
+        WHERE Id='{MetalBirdsQuestPolicy.CanonicalQuestId}'");
+    var duplicateCount = ScalarText(connection, $@"
+        SELECT COUNT(*) FROM QuestProgress
+        WHERE Id IN ('{MetalBirdsQuestPolicy.DuplicateWikiQuestId}', '{MetalBirdsQuestPolicy.GameQuestId}')");
+
+    Console.WriteLine(
+        $"Integrity={integrity}; QuestProgress={questCount}; ObjectiveProgress={objectiveCount}; " +
+        $"MetalBirds={canonical}; DuplicateRows={duplicateCount}");
+    return integrity.Equals("ok", StringComparison.OrdinalIgnoreCase) && duplicateCount == "0" ? 0 : 1;
+}
+
+if (args.Length == 2 &&
     args[0].Equals("--validate-wiki-lighthouse-data", StringComparison.OrdinalIgnoreCase))
 {
     using var connection = new SqliteConnection($"Data Source={args[1]};Mode=ReadOnly");
@@ -992,6 +1048,144 @@ Run("excluded quest cleanup removes dependencies and preserves live EFT quests",
     }
 });
 
+Run("Metal Birds policy keeps the current Peacekeeper quest on its stable game identity", () =>
+{
+    var tempRoot = Path.Combine(Path.GetTempPath(), "TarkovHelperMetalBirdsRegression", Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(tempRoot);
+    var sourcePath = Path.GetFullPath(Path.Combine("TarkovHelper", "Assets", "tarkov_data.db"));
+    var databasePath = Path.Combine(tempRoot, "metal-birds.db");
+    File.Copy(sourcePath, databasePath);
+
+    try
+    {
+        using var connection = new SqliteConnection($"Data Source={databasePath}");
+        connection.Open();
+        using (var seed = connection.CreateCommand())
+        {
+            seed.CommandText = @"
+                INSERT OR IGNORE INTO Quests (
+                    Id, BsgId, Name, NameEN, Trader, Location, UpdatedAt)
+                VALUES (
+                    @duplicateId, NULL, 'Metal Birds', 'Metal Birds',
+                    'Peacekeeper', 'Woods', '2026-10-15T00:00:00Z');
+                INSERT OR IGNORE INTO QuestObjectives (
+                    Id, QuestId, SortOrder, ObjectiveType, Description, UpdatedAt)
+                VALUES (
+                    'metal-birds-regression-objective', @duplicateId, 0,
+                    'Collect', 'duplicate objective', '2026-10-15T00:00:00Z');";
+            seed.Parameters.AddWithValue("@duplicateId", MetalBirdsQuestPolicy.DuplicateWikiQuestId);
+            seed.ExecuteNonQuery();
+        }
+
+        using (var transaction = connection.BeginTransaction())
+        {
+            var changed = MetalBirdsQuestPolicy.ApplyAsync(connection, transaction)
+                .GetAwaiter()
+                .GetResult();
+            transaction.Commit();
+            Assert(changed >= 2, "the canonical and duplicate identities must both be handled");
+        }
+
+        using (var transaction = connection.BeginTransaction())
+        {
+            MetalBirdsQuestPolicy.ApplyAsync(connection, transaction).GetAwaiter().GetResult();
+            transaction.Commit();
+        }
+
+        Assert(ScalarCount(connection, $@"
+                SELECT COUNT(*) FROM Quests
+                WHERE BsgId='{MetalBirdsQuestPolicy.GameQuestId}'
+                  AND NameEN='Metal Birds'
+                  AND Trader='Peacekeeper'
+                  AND Location='Woods'") == 1,
+            "Metal Birds must retain the old stable BSG ID with current metadata");
+        Assert(ScalarCount(connection, $@"
+                SELECT COUNT(*) FROM Quests
+                WHERE Id='{MetalBirdsQuestPolicy.DuplicateWikiQuestId}'") == 0,
+            "the Wiki-only duplicate must be removed");
+        Assert(ScalarCount(connection, $@"
+                SELECT COUNT(*) FROM QuestObjectives objective
+                JOIN Quests quest ON quest.Id=objective.QuestId
+                WHERE quest.BsgId='{MetalBirdsQuestPolicy.GameQuestId}'") == 4,
+            "Metal Birds must contain the four current Wiki objectives");
+        Assert(ScalarCount(connection, $@"
+                SELECT COUNT(*) FROM QuestObjectives objective
+                JOIN Quests quest ON quest.Id=objective.QuestId
+                WHERE quest.BsgId='{MetalBirdsQuestPolicy.GameQuestId}'
+                  AND objective.ObjectiveType='Collect'
+                  AND objective.MapName='Woods'
+                  AND objective.LocationPoints IS NOT NULL") == 2,
+            "both Woods acquisition objectives must retain map coordinates");
+        Assert(ScalarCount(connection, $@"
+                SELECT COUNT(*) FROM QuestRequiredItems item
+                JOIN Quests quest ON quest.Id=item.QuestId
+                WHERE quest.BsgId='{MetalBirdsQuestPolicy.GameQuestId}'") == 2,
+            "Metal Birds must require only the current controller and gyroscope");
+    }
+    finally
+    {
+        SqliteConnection.ClearAllPools();
+        Directory.Delete(tempRoot, recursive: true);
+    }
+});
+
+Run("Metal Birds user progress migration preserves quest and objective state", () =>
+{
+    var tempRoot = Path.Combine(Path.GetTempPath(), "TarkovHelperMetalBirdsProgress", Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(tempRoot);
+    var databasePath = Path.Combine(tempRoot, "user_data.db");
+
+    try
+    {
+        using var connection = new SqliteConnection($"Data Source={databasePath}");
+        connection.Open();
+        using (var schema = connection.CreateCommand())
+        {
+            schema.CommandText = $@"
+                CREATE TABLE QuestProgress (
+                    Id TEXT, ProfileType INTEGER NOT NULL, NormalizedName TEXT,
+                    Status TEXT NOT NULL, UpdatedAt TEXT NOT NULL,
+                    PRIMARY KEY (Id, ProfileType));
+                CREATE TABLE ObjectiveProgress (
+                    Id TEXT, ProfileType INTEGER NOT NULL, QuestId TEXT,
+                    IsCompleted INTEGER NOT NULL, UpdatedAt TEXT NOT NULL,
+                    PRIMARY KEY (Id, ProfileType));
+                INSERT INTO QuestProgress VALUES
+                    ('{MetalBirdsQuestPolicy.CanonicalQuestId}', 1, 'lend-lease---part-1', 'Active', '2026-10-07T00:00:00Z'),
+                    ('{MetalBirdsQuestPolicy.DuplicateWikiQuestId}', 1, 'metal-birds', 'Done', '2026-10-15T00:00:00Z');
+                INSERT INTO ObjectiveProgress VALUES
+                    ('fandomobj_770a194e667df32c86d1ce7f', 1, '{MetalBirdsQuestPolicy.DuplicateWikiQuestId}', 1, '2026-10-15T00:00:00Z');";
+            schema.ExecuteNonQuery();
+        }
+
+        MetalBirdsQuestPolicy.MigrateUserProgressAsync(connection).GetAwaiter().GetResult();
+        MetalBirdsQuestPolicy.MigrateUserProgressAsync(connection).GetAwaiter().GetResult();
+
+        Assert(ScalarCount(connection, $@"
+                SELECT COUNT(*) FROM QuestProgress
+                WHERE Id='{MetalBirdsQuestPolicy.CanonicalQuestId}'
+                  AND ProfileType=1
+                  AND NormalizedName='metal-birds'
+                  AND Status='Done'") == 1,
+            "the strongest current progress state must move to the canonical quest");
+        Assert(ScalarCount(connection, $@"
+                SELECT COUNT(*) FROM QuestProgress
+                WHERE Id='{MetalBirdsQuestPolicy.DuplicateWikiQuestId}'") == 0,
+            "duplicate quest progress must be removed after migration");
+        Assert(ScalarCount(connection, $@"
+                SELECT COUNT(*) FROM ObjectiveProgress
+                WHERE Id='0BlpeIPS1xfwFMYIHimXQ0'
+                  AND QuestId='{MetalBirdsQuestPolicy.CanonicalQuestId}'
+                  AND IsCompleted=1") == 1,
+            "completed objective state must move to the canonical objective ID");
+    }
+    finally
+    {
+        SqliteConnection.ClearAllPools();
+        Directory.Delete(tempRoot, recursive: true);
+    }
+});
+
 Run("packaged quest database contains no excluded rows or orphaned links", () =>
 {
     var databasePath = Path.GetFullPath(Path.Combine("TarkovHelper", "Assets", "tarkov_data.db"));
@@ -1108,6 +1302,28 @@ Run("packaged quest database contains no excluded rows or orphaned links", () =>
         "Invasive Therapy must require three Obdolbos stash items");
     Assert(ScalarCount(connection, "SELECT COUNT(*) FROM QuestRequirements WHERE GroupId > 0") > 0,
         "Wiki OR prerequisite groups must be preserved in the packaged database");
+    Assert(ScalarCount(connection, $@"
+            SELECT COUNT(*) FROM Quests
+            WHERE BsgId='{MetalBirdsQuestPolicy.GameQuestId}'
+              AND NameEN='Metal Birds'
+              AND Trader='Peacekeeper'
+              AND Location='Woods'") == 1,
+        "packaged Metal Birds must use the current Peacekeeper identity");
+    Assert(ScalarCount(connection, $@"
+            SELECT COUNT(*) FROM Quests
+            WHERE Id='{MetalBirdsQuestPolicy.DuplicateWikiQuestId}'
+               OR NameEN='Lend-Lease - Part 1'") == 0,
+        "packaged data must not retain the duplicate or old Metal Birds identity");
+    Assert(ScalarCount(connection, $@"
+            SELECT COUNT(*) FROM QuestObjectives objective
+            JOIN Quests quest ON quest.Id=objective.QuestId
+            WHERE quest.BsgId='{MetalBirdsQuestPolicy.GameQuestId}'") == 4,
+        "packaged Metal Birds must contain four current objectives");
+    Assert(ScalarCount(connection, $@"
+            SELECT COUNT(*) FROM QuestRequiredItems item
+            JOIN Quests quest ON quest.Id=item.QuestId
+            WHERE quest.BsgId='{MetalBirdsQuestPolicy.GameQuestId}'") == 2,
+        "packaged Metal Birds must require only two current quest items");
     Assert(ScalarCount(connection, @"
             SELECT COUNT(*)
             FROM WikiQuestMetadata metadata
