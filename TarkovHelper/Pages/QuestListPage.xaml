@@ -78,6 +78,15 @@
                             ToolTip="이 퀘스트를 현재 진행 중으로 저장"
                             Visibility="{Binding InProgressButtonVisibility}"/>
 
+                    <!-- Cancel explicit in-progress Button -->
+                    <Button Grid.Column="3" Content="진행 취소" Padding="8,4"
+                            Margin="0,0,6,0"
+                            FontSize="{DynamicResource FontSizeTiny}" MinWidth="66"
+                            Click="CancelInProgressButton_Click"
+                            Tag="{Binding}"
+                            ToolTip="수동 또는 로그로 저장된 진행 중 상태를 취소"
+                            Visibility="{Binding CancelInProgressButtonVisibility}"/>
+
                     <!-- Complete Button -->
                     <Button Grid.Column="4" Content="완료" Padding="8,4"
                             FontSize="{DynamicResource FontSizeTiny}" MinWidth="50"
@@ -353,6 +362,9 @@
                                 <Button x:Name="BtnInProgress" Content="진행 중 처리" Padding="12,6"
                                         Margin="0,0,8,0" Click="BtnInProgress_Click"
                                         ToolTip="완료 또는 실패 상태도 현재 진행 중으로 교정"/>
+                                <Button x:Name="BtnCancelInProgress" Content="진행 중 취소" Padding="12,6"
+                                        Margin="0,0,8,0" Click="BtnCancelInProgress_Click"
+                                        ToolTip="수동 또는 로그로 저장된 진행 중 상태를 취소하고 조건에 따라 다시 판정"/>
                                 <Button x:Name="BtnComplete" Content="완료 처리" Padding="12,6"
                                         Margin="0,0,8,0" Click="BtnComplete_Click"/>
                                 <Button x:Name="BtnReset" Content="초기화" Padding="12,6"

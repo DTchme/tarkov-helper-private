@@ -688,6 +688,8 @@ Run("startup initialization applies the complete database schema", () =>
         questProgress.MarkQuestActiveAsync(linkedQuest).GetAwaiter().GetResult();
         Assert(questProgress.GetStatus(linkedQuest) == QuestStatus.Active,
             "the manual in-progress action must correct a completed quest back to active");
+        Assert(questProgress.IsQuestExplicitlyActive(linkedQuest),
+            "the manual in-progress action must be distinguishable from an inferred active state");
 
         using (var activeVerified = new SqliteConnection($"Data Source={databasePath};Mode=ReadOnly"))
         {
@@ -700,6 +702,31 @@ Run("startup initialization applies the complete database schema", () =>
                 ScalarCount(activeVerified,
                     "SELECT COUNT(*) FROM QuestProgress WHERE Id='linked-quest' AND ProfileType=0") == 0,
                 "the manual in-progress correction must not leak into PVP");
+        }
+
+        Assert(!questProgress.IsQuestExplicitlyActive(automaticQuest),
+            "an inferred active quest must not be exposed as a cancellable explicit state");
+        Assert(!questProgress.CancelQuestActiveAsync(automaticQuest).GetAwaiter().GetResult(),
+            "cancelling in-progress must not remove an inferred active state");
+        Assert(questProgress.GetStatus(automaticQuest) == QuestStatus.Active,
+            "an inferred active quest must remain active after a cancellation attempt");
+
+        Assert(questProgress.CancelQuestActiveAsync(linkedQuest).GetAwaiter().GetResult(),
+            "an explicitly active quest must support cancelling in-progress");
+        Assert(!questProgress.IsQuestExplicitlyActive(linkedQuest),
+            "cancelling in-progress must remove the explicit active state");
+        Assert(questProgress.GetStatus(linkedQuest) == QuestStatus.Available,
+            "a cancelled quest must return to its requirements-derived status");
+        Assert(!questProgress.CancelQuestActiveAsync(linkedQuest).GetAwaiter().GetResult(),
+            "cancelling in-progress twice must be a safe no-op");
+
+        using (var cancelledVerified = new SqliteConnection($"Data Source={databasePath};Mode=ReadOnly"))
+        {
+            cancelledVerified.Open();
+            Assert(
+                ScalarCount(cancelledVerified,
+                    "SELECT COUNT(*) FROM QuestProgress WHERE Id='linked-quest' AND ProfileType=1") == 0,
+                "cancelling in-progress must delete the stored state for the current profile");
         }
 
         var archive = QuestLogArchiveService.Instance;

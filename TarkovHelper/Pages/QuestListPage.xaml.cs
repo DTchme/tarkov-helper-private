@@ -360,6 +360,9 @@ namespace TarkovHelper.Pages
                 InProgressButtonVisibility = status != QuestStatus.Active && status != QuestStatus.Unavailable
                     ? Visibility.Visible
                     : Visibility.Collapsed,
+                CancelInProgressButtonVisibility = _progressService.IsQuestExplicitlyActive(task)
+                    ? Visibility.Visible
+                    : Visibility.Collapsed,
                 CompleteButtonVisibility = (status == QuestStatus.Available || status == QuestStatus.Active || status == QuestStatus.Locked || status == QuestStatus.LevelLocked)
                     && status != QuestStatus.Unavailable ? Visibility.Visible : Visibility.Collapsed,
                 IsKappaRequired = task.ReqKappa,
@@ -488,6 +491,9 @@ namespace TarkovHelper.Pages
                     ? $"위키에 자동 판정할 수 없는 조건이 있습니다.\n{vm.Task.UnverifiedRequirementNotes}"
                     : string.Empty;
                 vm.InProgressButtonVisibility = status != QuestStatus.Active && status != QuestStatus.Unavailable
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+                vm.CancelInProgressButtonVisibility = _progressService.IsQuestExplicitlyActive(vm.Task)
                     ? Visibility.Visible
                     : Visibility.Collapsed;
                 vm.CompleteButtonVisibility = (status == QuestStatus.Available || status == QuestStatus.Active || status == QuestStatus.Locked || status == QuestStatus.LevelLocked)
@@ -967,6 +973,9 @@ namespace TarkovHelper.Pages
             BtnInProgress.Visibility = status != QuestStatus.Active && status != QuestStatus.Unavailable
                 ? Visibility.Visible
                 : Visibility.Collapsed;
+            BtnCancelInProgress.Visibility = _progressService.IsQuestExplicitlyActive(task)
+                ? Visibility.Visible
+                : Visibility.Collapsed;
             BtnComplete.Visibility = status == QuestStatus.Done ? Visibility.Collapsed : Visibility.Visible;
             BtnReset.Visibility = status == QuestStatus.Done || status == QuestStatus.Failed
                 ? Visibility.Visible : Visibility.Collapsed;
@@ -985,6 +994,14 @@ namespace TarkovHelper.Pages
             if (sender is Button btn && btn.Tag is QuestViewModel vm)
             {
                 await MarkQuestInProgressAsync(vm.Task);
+            }
+        }
+
+        private async void CancelInProgressButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is QuestViewModel vm)
+            {
+                await CancelQuestInProgressAsync(vm.Task);
             }
         }
 
@@ -1030,6 +1047,15 @@ namespace TarkovHelper.Pages
             }
         }
 
+        private async void BtnCancelInProgress_Click(object sender, RoutedEventArgs e)
+        {
+            var selectedVm = LstQuests.SelectedItem as QuestViewModel;
+            if (selectedVm != null)
+            {
+                await CancelQuestInProgressAsync(selectedVm.Task);
+            }
+        }
+
         private async Task MarkQuestInProgressAsync(TarkovTask task)
         {
             try
@@ -1041,6 +1067,22 @@ namespace TarkovHelper.Pages
                 MessageBox.Show(
                     $"퀘스트를 진행 중으로 저장하지 못했습니다: {ex.Message}",
                     "진행 상태 저장 오류",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+        }
+
+        private async Task CancelQuestInProgressAsync(TarkovTask task)
+        {
+            try
+            {
+                await _progressService.CancelQuestActiveAsync(task);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    $"퀘스트의 진행 중 상태를 취소하지 못했습니다: {ex.Message}",
+                    "진행 상태 취소 오류",
                     MessageBoxButton.OK,
                     MessageBoxImage.Error);
             }
