@@ -1089,7 +1089,11 @@ public class MapQuestMarkerManager
             foreach (var marker in allMarkers)
             {
                 if (groupObjectiveIds.Contains(marker.Objective.ObjectiveId)) continue;
-                if (groupListBounds.IntersectsWith(marker.TextBounds))
+                if (groupListBounds.IntersectsWith(marker.TextBounds) &&
+                    MapMarkerGroupingPolicy.CanJoinCluster(
+                        expandedGroup,
+                        marker,
+                        info => (info.MarkerPosX, info.MarkerPosY)))
                 {
                     expandedGroup.Add(marker);
                     groupObjectiveIds.Add(marker.Objective.ObjectiveId);
@@ -1139,7 +1143,12 @@ public class MapQuestMarkerManager
                 if (rectJ.X > rectI.Right)
                     break;
 
-                if (rectI.IntersectsWith(rectJ))
+                if (rectI.IntersectsWith(rectJ) &&
+                    MapMarkerGroupingPolicy.AreAnchorsClose(
+                        markerInfos[idxI].MarkerPosX,
+                        markerInfos[idxI].MarkerPosY,
+                        markerInfos[idxJ].MarkerPosX,
+                        markerInfos[idxJ].MarkerPosY))
                 {
                     Union(idxI, idxJ);
                 }
@@ -1154,7 +1163,14 @@ public class MapQuestMarkerManager
             groups[root].Add(markerInfos[i]);
         }
 
-        return groups.Values.ToList();
+        // A-B and B-C overlaps must not indirectly merge A and C when their actual
+        // marker anchors are far apart. Keep every resulting cluster within the same
+        // maximum anchor diameter.
+        return groups.Values
+            .SelectMany(group => MapMarkerGroupingPolicy.PartitionByAnchorProximity(
+                group,
+                info => (info.MarkerPosX, info.MarkerPosY)))
+            .ToList();
     }
 
     private FrameworkElement CreateTextGroupIndicator(
