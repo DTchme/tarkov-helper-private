@@ -391,6 +391,16 @@ namespace TarkovHelper.Services
         }
 
         /// <summary>
+        /// Returns whether the quest is explicitly stored as active by a log event or
+        /// manual input. An Active state inferred from requirements is intentionally
+        /// excluded so the UI cannot erase or misrepresent automatic inference.
+        /// </summary>
+        public bool IsQuestExplicitlyActive(TarkovTask task)
+        {
+            return TryGetExplicitStatus(task, out var status) && status == QuestStatus.Active;
+        }
+
+        /// <summary>
         /// Check if player level meets quest requirement
         /// </summary>
         public bool IsLevelRequirementMet(TarkovTask task)
@@ -990,6 +1000,49 @@ namespace TarkovHelper.Services
                 applyAlternativeConsequences: false,
                 profileType: _loadedProfile,
                 allowTerminalActiveOverride: true);
+        }
+
+        /// <summary>
+        /// Cancels only an explicitly stored active state, then lets the quest status be
+        /// recalculated from its prerequisites, level, and other tracked requirements.
+        /// Derived active states are left untouched.
+        /// </summary>
+        public async Task<bool> CancelQuestActiveAsync(TarkovTask task)
+        {
+            if (!IsQuestExplicitlyActive(task))
+                return false;
+
+            var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (task.Ids != null)
+            {
+                foreach (var id in task.Ids)
+                {
+                    if (!string.IsNullOrWhiteSpace(id))
+                        keys.Add(id);
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(task.NormalizedName))
+                keys.Add(task.NormalizedName);
+
+            if (keys.Count == 0)
+                return false;
+
+            foreach (var key in keys)
+            {
+                await _userDataDb.DeleteQuestProgressAsync(key, _loadedProfile);
+            }
+
+            var removed = false;
+            foreach (var key in keys)
+            {
+                removed |= _questProgress.Remove(key);
+            }
+
+            if (removed)
+                ProgressChanged?.Invoke(this, EventArgs.Empty);
+
+            return removed;
         }
 
         /// <summary>
