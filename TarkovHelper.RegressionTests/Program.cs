@@ -1301,6 +1301,32 @@ Run("current EFT screenshot filenames expose coordinates", () =>
     Assert(position.Angle.HasValue, "the screenshot quaternion must produce a facing angle");
 });
 
+Run("map marker grouping keeps distant quest locations separate", () =>
+{
+    var chain = new[]
+    {
+        (Id: "a", X: 0.0, Y: 0.0),
+        (Id: "b", X: 30.0, Y: 0.0),
+        (Id: "c", X: 60.0, Y: 0.0)
+    };
+
+    Assert(MapMarkerGroupingPolicy.AreAnchorsClose(0, 0, 30, 0),
+        "nearby quest markers must remain eligible for label grouping");
+    Assert(!MapMarkerGroupingPolicy.AreAnchorsClose(0, 0, 60, 0),
+        "distant quest markers must not be grouped because their labels overlap");
+
+    var clusters = MapMarkerGroupingPolicy.PartitionByAnchorProximity(
+        chain,
+        marker => (marker.X, marker.Y));
+
+    Assert(clusters.Count == 2,
+        "a chain of nearby overlaps must be split before it merges distant endpoints");
+    Assert(clusters.All(cluster =>
+            cluster.All(first => cluster.All(second =>
+                MapMarkerGroupingPolicy.AreAnchorsClose(first.X, first.Y, second.X, second.Y)))),
+        "every grouped quest marker must be close to every other marker in that group");
+});
+
 Run("screenshot watcher emits a parsed position for a new EFT screenshot", () =>
 {
     var tempRoot = Path.Combine(Path.GetTempPath(), "TarkovHelperScreenshotRegression", Guid.NewGuid().ToString("N"));
