@@ -241,6 +241,10 @@ public sealed class UserDataDbService
 
         await using var cmd = new SqliteCommand(createTablesSql, connection);
         await cmd.ExecuteNonQueryAsync();
+
+        // Metal Birds kept the old Lend-Lease - Part 1 game identity in EFT 1.1.
+        // Merge progress that v1.5.37 may have saved against the duplicate Wiki row.
+        await MetalBirdsQuestPolicy.MigrateUserProgressAsync(connection);
     }
 
     /// <summary>
