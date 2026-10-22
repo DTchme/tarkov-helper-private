@@ -90,6 +90,18 @@ if (args.Length == 2 &&
 }
 
 if (args.Length == 2 &&
+    args[0].Equals("--apply-postman-pat-location", StringComparison.OrdinalIgnoreCase))
+{
+    using var connection = new SqliteConnection($"Data Source={args[1]};Mode=ReadWrite");
+    connection.Open();
+    using var transaction = connection.BeginTransaction();
+    var changed = PostmanPatLocationPolicy.ApplyAsync(connection, transaction).GetAwaiter().GetResult();
+    transaction.Commit();
+    Console.WriteLine($"Restored {changed} Postman Pat letter pickup marker(s).");
+    return changed > 0 ? 0 : 1;
+}
+
+if (args.Length == 2 &&
     args[0].Equals("--apply-metal-birds-current-identity", StringComparison.OrdinalIgnoreCase))
 {
     using var connection = new SqliteConnection($"Data Source={args[1]};Mode=ReadWrite");
@@ -317,6 +329,62 @@ Run("V3 flash drive location policy targets acquisition objectives only", () =>
         V3FlashDriveLocationPolicy.OptionalPointsJson);
     Assert(points.RootElement.GetArrayLength() == 2,
         "the current Wiki guide must produce one chalet marker and one tennis-court marker");
+});
+
+Run("Postman Pat restores only the Factory letter pickup and keeps objective identity", () =>
+{
+    using var connection = new SqliteConnection("Data Source=:memory:");
+    connection.Open();
+    using (var schema = connection.CreateCommand())
+    {
+        schema.CommandText = @"
+            CREATE TABLE Quests (Id TEXT PRIMARY KEY, BsgId TEXT, Name TEXT, NameEN TEXT);
+            CREATE TABLE QuestObjectives (
+                Id TEXT PRIMARY KEY, QuestId TEXT, ObjectiveType TEXT, Description TEXT,
+                MapName TEXT, LocationName TEXT, LocationPoints TEXT, OptionalPoints TEXT);
+            INSERT INTO Quests VALUES
+                ('part1', '59675ea386f77414b32bded2', 'Postman Pat - Part 1', 'Postman Pat - Part 1'),
+                ('part2', '596760e186f7741e11214d58', 'Postman Pat - Part 2', 'Postman Pat - Part 2'),
+                ('other', NULL, 'Unrelated Quest', 'Unrelated Quest');
+            INSERT INTO QuestObjectives (Id, QuestId, ObjectiveType, Description, MapName) VALUES
+                ('pickup', 'part1', 'Collect', 'Find the dead messenger and obtain his letter on Factory', 'Factory'),
+                ('survive', 'part1', 'Survive', 'Survive and extract from Factory', 'Factory'),
+                ('handover', 'part1', 'HandOver', 'Hand over the letter to Therapist', 'Factory'),
+                ('part2-handover', 'part2', 'HandOver', 'Hand over the letter', 'Factory'),
+                ('other-pickup', 'other', 'Collect', 'Obtain the letter on Factory', 'Factory');";
+        schema.ExecuteNonQuery();
+    }
+
+    // Simulate a Wiki refresh with no coordinates, then a repeat refresh.
+    for (var attempt = 0; attempt < 2; attempt++)
+    {
+        using var transaction = connection.BeginTransaction();
+        Assert(PostmanPatLocationPolicy.ApplyAsync(connection, transaction).GetAwaiter().GetResult() == 1,
+            "only the Part 1 letter pickup should be corrected");
+        transaction.Commit();
+    }
+
+    Assert(ScalarCount(connection, "SELECT COUNT(*) FROM QuestObjectives") == 5,
+        "restoring coordinates must not replace or duplicate objective IDs");
+    Assert(ScalarCount(connection, @"
+        SELECT COUNT(*) FROM QuestObjectives
+        WHERE Id='pickup' AND MapName='Factory' AND LocationName LIKE '%1986%'
+          AND json_array_length(LocationPoints)=1
+          AND json_extract(LocationPoints, '$[0].FloorId')='main'
+          AND ABS(json_extract(LocationPoints, '$[0].X') - (-19.9610023)) < 0.000001
+          AND ABS(json_extract(LocationPoints, '$[0].Z') - 21.9430027) < 0.000001
+          AND OptionalPoints IS NULL") == 1,
+        "the pickup must have one ground-floor marker at the current letter position");
+    Assert(ScalarCount(connection, @"
+        SELECT COUNT(*) FROM QuestObjectives
+        WHERE Id<>'pickup' AND LocationPoints IS NULL AND OptionalPoints IS NULL") == 4,
+        "survival, handover, Part 2, and unrelated objectives must remain unchanged");
+    Assert(PostmanPatLocationPolicy.IsTargetObjective(null, "The Postman Pat - Part 1", "Visit",
+            "Locate the dead messenger and obtain his letter on Factory"),
+        "Wiki-only identities and visit-style pickup wording must also be supported");
+    Assert(!PostmanPatLocationPolicy.IsTargetObjective(PostmanPatLocationPolicy.QuestBsgId,
+            "Postman Pat - Part 1", "Custom", "Hand over the letter to Therapist"),
+        "custom delivery objectives must never receive the pickup marker");
 });
 
 Run("Fuel Crisis location policy groups all four Wiki tankers correctly", () =>
@@ -1184,6 +1252,25 @@ Run("Metal Birds user progress migration preserves quest and objective state", (
         SqliteConnection.ClearAllPools();
         Directory.Delete(tempRoot, recursive: true);
     }
+});
+
+Run("packaged Postman Pat pickup loads into Factory map objectives", () =>
+{
+    var service = QuestObjectiveDbService.Instance;
+    Assert(service.LoadObjectivesAsync().GetAwaiter().GetResult(),
+        "the production map objective loader must load the packaged database");
+    var factory = new MapConfig
+    {
+        Key = "Factory", DisplayName = "Factory",
+        Aliases = new List<string> { "factory4_day", "factory4_night", "Night Factory" }
+    };
+    var canonicalId = "aHR0cHM6Ly9lc2NhcGVmcm9tdGFya292LmZhbmRvbS5jb20vd2lraS9Qb3N0bWFuX1BhdF8tX1BhcnRfMQ==";
+    var pickups = service.GetObjectivesForMap("Factory", factory)
+        .Where(objective => objective.QuestId == canonicalId).ToList();
+    Assert(pickups.Count == 1 && pickups[0].ObjectiveType == QuestObjectiveType.Collect,
+        "Factory must load only the letter pickup, not delivery or extraction duplicates");
+    Assert(pickups[0].HasCoordinates && pickups[0].LocationPoints.Single().FloorId == "main",
+        "the production loader must expose the pickup's ground-floor marker");
 });
 
 Run("packaged quest database contains no excluded rows or orphaned links", () =>
