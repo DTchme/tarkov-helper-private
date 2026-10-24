@@ -624,7 +624,7 @@ public sealed class WikiQuestRefreshService
     private static HttpRequestMessage CreateWikiRequest(string url)
     {
         var request = new HttpRequestMessage(HttpMethod.Get, url);
-        request.Headers.UserAgent.ParseAdd("TarkovHelper/1.5.39 (+English-Fandom-Wiki quest sync)");
+        request.Headers.UserAgent.ParseAdd("TarkovHelper/1.5.40 (+English-Fandom-Wiki quest sync)");
         return request;
     }
 
@@ -637,7 +637,7 @@ public sealed class WikiQuestRefreshService
             Uri.EscapeDataString(page);
 
         using var request = new HttpRequestMessage(HttpMethod.Get, apiUrl);
-        request.Headers.UserAgent.ParseAdd("TarkovHelper/1.5.39 (+official wiki sync)");
+        request.Headers.UserAgent.ParseAdd("TarkovHelper/1.5.40 (+official wiki sync)");
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
 
@@ -1064,6 +1064,7 @@ public sealed class WikiQuestRefreshService
             await FuelCrisisLocationPolicy.ApplyAsync(connection, tx, cancellationToken);
             await MetalBirdsQuestPolicy.ApplyAsync(connection, tx, cancellationToken);
             await PostmanPatLocationPolicy.ApplyAsync(connection, tx, cancellationToken);
+            await RevisionReserveLocationPolicy.ApplyAsync(connection, tx, cancellationToken);
 
             await tx.CommitAsync(cancellationToken);
             return new OverlayStats(added, updated, objectivesFilled, prerequisites, requiredItems, collectorCount);

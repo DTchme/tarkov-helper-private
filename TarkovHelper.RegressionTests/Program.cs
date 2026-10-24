@@ -90,6 +90,18 @@ if (args.Length == 2 &&
 }
 
 if (args.Length == 2 &&
+    args[0].Equals("--apply-revision-reserve-locations", StringComparison.OrdinalIgnoreCase))
+{
+    using var connection = new SqliteConnection($"Data Source={args[1]};Mode=ReadWrite");
+    connection.Open();
+    using var transaction = connection.BeginTransaction();
+    var changed = RevisionReserveLocationPolicy.ApplyAsync(connection, transaction).GetAwaiter().GetResult();
+    transaction.Commit();
+    Console.WriteLine($"Corrected {changed} Revision - Reserve inspection/marking objective locations.");
+    return changed == 8 ? 0 : 1;
+}
+
+if (args.Length == 2 &&
     args[0].Equals("--apply-postman-pat-location", StringComparison.OrdinalIgnoreCase))
 {
     using var connection = new SqliteConnection($"Data Source={args[1]};Mode=ReadWrite");
@@ -385,6 +397,85 @@ Run("Postman Pat restores only the Factory letter pickup and keeps objective ide
     Assert(!PostmanPatLocationPolicy.IsTargetObjective(PostmanPatLocationPolicy.QuestBsgId,
             "Postman Pat - Part 1", "Custom", "Hand over the letter to Therapist"),
         "custom delivery objectives must never receive the pickup marker");
+});
+
+Run("Revision Reserve restores four vehicle pairs without replacing objective IDs", () =>
+{
+    using var connection = new SqliteConnection("Data Source=:memory:");
+    connection.Open();
+    using (var schema = connection.CreateCommand())
+    {
+        schema.CommandText = @"
+            CREATE TABLE Quests (Id TEXT PRIMARY KEY, BsgId TEXT, Name TEXT, NameEN TEXT);
+            CREATE TABLE QuestObjectives (
+                Id TEXT PRIMARY KEY, QuestId TEXT, ObjectiveType TEXT, Description TEXT,
+                MapName TEXT, LocationName TEXT, LocationPoints TEXT, OptionalPoints TEXT);
+            INSERT INTO Quests VALUES
+                ('reserve', '6086c852c945025d41566124', 'Revision - Reserve', 'Revision - Reserve'),
+                ('other', 'other-game-id', 'Other Quest', 'Other Quest');
+            INSERT INTO QuestObjectives (Id, QuestId, ObjectiveType, Description) VALUES
+                ('unrelated', 'other', 'Mark', 'Mark the first BMP-2 with an MS2000 Marker'),
+                ('old-lav', 'reserve', 'Visit', 'Locate and inspect the first LAV III on Reserve'),
+                ('survive', 'reserve', 'Survive', 'Survive and extract from Reserve');";
+        schema.ExecuteNonQuery();
+    }
+
+    var ordinals = new[] { "first", "second", "third", "fourth" };
+    for (var index = 0; index < ordinals.Length; index++)
+    {
+        foreach (var type in new[] { "Visit", "Mark" })
+        {
+            using var seed = connection.CreateCommand();
+            seed.CommandText = @"
+                INSERT INTO QuestObjectives (Id, QuestId, ObjectiveType, Description, LocationPoints)
+                VALUES (@id, 'reserve', @type, @description, @points)";
+            seed.Parameters.AddWithValue("@id", $"{index + 1}-{type}");
+            seed.Parameters.AddWithValue("@type", type);
+            seed.Parameters.AddWithValue("@description", $"{ordinals[index]} BMP-2 on Reserve");
+            seed.Parameters.AddWithValue("@points", type == "Mark"
+                ? "[{\"X\":0,\"Y\":1,\"Z\":0,\"FloorId\":\"bunker\"}]"
+                : DBNull.Value);
+            seed.ExecuteNonQuery();
+        }
+    }
+
+    for (var attempt = 0; attempt < 2; attempt++)
+    {
+        using var transaction = connection.BeginTransaction();
+        Assert(RevisionReserveLocationPolicy.ApplyAsync(connection, transaction).GetAwaiter().GetResult() == 8,
+            "all four inspection/marking pairs should be corrected on every refresh");
+        transaction.Commit();
+    }
+
+    // Expected world centers from the current game zones, independently captured
+    // alongside the current Wiki's four BMP-2 guide locations.
+    var expected = new (string Id, double X, double Z)[]
+    {
+        ("1-Visit", -100.4, -155.69), ("1-Mark", -100.62, -155.97),
+        ("2-Visit", 79.01, -31.55), ("2-Mark", 79.03, -31.79),
+        ("3-Visit", 103.38, 63.87), ("3-Mark", 101.73, 64.44),
+        ("4-Visit", 53.83, 122.03), ("4-Mark", 53.62, 122.66)
+    };
+    foreach (var target in expected)
+    {
+        using var verify = connection.CreateCommand();
+        verify.CommandText = @"
+            SELECT LocationPoints FROM QuestObjectives WHERE Id=@id AND MapName='Reserve'";
+        verify.Parameters.AddWithValue("@id", target.Id);
+        var objective = new QuestObjective { LocationPointsJson = (string?)verify.ExecuteScalar() };
+        Assert(objective.HasCoordinates && objective.LocationPoints.Count == 1,
+            $"{target.Id} must retain its ID and expose a point marker");
+        var point = objective.LocationPoints.Single();
+        Assert(Math.Abs(point.X - target.X) < 0.000001 && Math.Abs(point.Z - target.Z) < 0.000001,
+            $"{target.Id} must use the correct vehicle's world coordinates");
+        Assert(point.FloorId == "main", "negative world height must not put Reserve BMPs in the bunker");
+    }
+    Assert(ScalarCount(connection, "SELECT COUNT(*) FROM QuestObjectives") == 11,
+        "location repair must not add, remove, or replace objective rows");
+    Assert(ScalarCount(connection, @"
+        SELECT COUNT(*) FROM QuestObjectives
+        WHERE Id IN ('unrelated', 'old-lav', 'survive') AND LocationPoints IS NULL") == 3,
+        "unrelated quests, obsolete vehicle types, and extraction objectives must be untouched");
 });
 
 Run("Fuel Crisis location policy groups all four Wiki tankers correctly", () =>
@@ -1271,6 +1362,24 @@ Run("packaged Postman Pat pickup loads into Factory map objectives", () =>
         "Factory must load only the letter pickup, not delivery or extraction duplicates");
     Assert(pickups[0].HasCoordinates && pickups[0].LocationPoints.Single().FloorId == "main",
         "the production loader must expose the pickup's ground-floor marker");
+});
+
+Run("packaged Revision Reserve loads all four inspection and marking locations", () =>
+{
+    var service = QuestObjectiveDbService.Instance;
+    Assert(service.LoadObjectivesAsync().GetAwaiter().GetResult(), "map objectives must load");
+    var reserve = new MapConfig { Key = "Reserve", DisplayName = "Reserve" };
+    var objectives = service.GetObjectivesForMap("Reserve", reserve)
+        .Where(objective => objective.QuestName == "Revision - Reserve").ToList();
+    Assert(objectives.Count == 8, "all eight current Wiki objectives must be available on Reserve");
+    Assert(objectives.Count(objective => objective.ObjectiveType == QuestObjectiveType.Visit) == 4 &&
+           objectives.Count(objective => objective.ObjectiveType == QuestObjectiveType.Mark) == 4,
+        "each of the four vehicles must have separate inspection and marking objectives");
+    Assert(objectives.All(objective => objective.LocationPoints.Single().FloorId == "main"),
+        "all four vehicles must be displayed on Reserve's ground floor");
+    Assert(objectives.Min(objective => objective.LocationPoints[0].Z) < -150 &&
+           objectives.Max(objective => objective.LocationPoints[0].Z) > 120,
+        "vehicle markers must span their real Reserve locations, not the old central cluster");
 });
 
 Run("packaged quest database contains no excluded rows or orphaned links", () =>
