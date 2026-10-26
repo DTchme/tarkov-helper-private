@@ -7,9 +7,9 @@
     <UseWPF>true</UseWPF>
     <EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition>
     <!-- Version Info for Auto-Update -->
-    <Version>1.5.41</Version>
-    <AssemblyVersion>1.5.41</AssemblyVersion>
-    <FileVersion>1.5.41</FileVersion>
+    <Version>1.5.42</Version>
+    <AssemblyVersion>1.5.42</AssemblyVersion>
+    <FileVersion>1.5.42</FileVersion>
     <ApplicationIcon>1764579946.ico</ApplicationIcon>
     <!-- AutoUpdater.NET satellite resources: Korean only -->
     <SatelliteResourceLanguages>ko</SatelliteResourceLanguages>

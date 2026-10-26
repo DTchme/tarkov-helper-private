@@ -592,7 +592,7 @@
                                                    Foreground="{StaticResource TextPrimaryBrush}"
                                                    Margin="0,0,0,8"/>
 
-                                        <TextBlock Text="영문 Escape from Tarkov Wiki에서 최신 퀘스트 정보를 수동으로 갱신합니다."
+                                        <TextBlock Text="영문 Escape from Tarkov Wiki에서 퀘스트와 은신처 재료 수량·FIR 조건을 갱신합니다. 진행 기록은 유지됩니다."
                                                    FontSize="{DynamicResource FontSizeXSmall}"
                                                    Foreground="{StaticResource TextSecondaryBrush}"
                                                    TextWrapping="Wrap"
@@ -603,7 +603,7 @@
                                                 <ColumnDefinition Width="Auto"/>
                                                 <ColumnDefinition Width="*"/>
                                             </Grid.ColumnDefinitions>
-                                            <Button x:Name="BtnUpdateApiData" Content="현재 프로필 퀘스트 DB 갱신"
+                                            <Button x:Name="BtnUpdateApiData" Content="Wiki 퀘스트·은신처 데이터 갱신"
                                                     Grid.Column="0"
                                                     Padding="12,8" Margin="0,0,12,0"
                                                     Click="BtnUpdateApiData_Click"/>
