@@ -2669,7 +2669,22 @@ public partial class MainWindow : Window
             TxtApiUpdateStatus.Foreground = GetStatusBrush("TextSecondaryBrush", Brushes.Gray);
 
             var result = await DatabaseUpdateService.Instance.CheckAndUpdateAsync();
-            if (result.WasUpdated) await MapMarkerDbService.Instance.RefreshAsync();
+            if (result.WasUpdated)
+            {
+                // Successful sources must refresh the UI even if another source failed.
+                await MapMarkerDbService.Instance.RefreshAsync();
+                await ItemDbService.Instance.RefreshAsync();
+                await QuestObjectiveDbService.Instance.RefreshAsync();
+                await HideoutDbService.Instance.RefreshAsync();
+                await HideoutProgressService.Instance.InitializeAsync(HideoutDbService.Instance.AllStations.ToList());
+                var progress = QuestProgressService.Instance;
+                if (await progress.InitializeFromDbAsync(ProfileService.Instance.CurrentProfile))
+                    QuestGraphService.Instance.Initialize(progress.AllTasks.ToList());
+                await ObjectiveProgressService.Instance.LoadObjectiveProgressAsync();
+                if (_questListPage?.IsVisible == true) await _questListPage.ReloadDataAsync();
+                if (_hideoutPage?.IsVisible == true) await _hideoutPage.ReloadDataAsync();
+                if (_itemsPage?.IsVisible == true) await _itemsPage.ReloadDataAsync();
+            }
 
             if (result.IsWarning)
             {
@@ -2683,28 +2698,6 @@ public partial class MainWindow : Window
                     TxtApiUpdateStatus.Text = result.Message;
                     TxtApiUpdateStatus.Foreground = GetStatusBrush("SuccessBrush", Brushes.Green);
 
-                    // The database update event reloads DB readers asynchronously.
-                    // Explicitly rebuild the progress lookup before a log sync can run,
-                    // so it cannot use the previous quest list during that short window.
-                    var currentProfile = ProfileService.Instance.CurrentProfile;
-
-                    // Wait for the item/objective readers as well. The DatabaseUpdated event
-                    // dispatches asynchronous reloads, so relying on the event alone can briefly
-                    // leave the UI on the previous in-memory dataset.
-                    await ItemDbService.Instance.RefreshAsync();
-                    await QuestObjectiveDbService.Instance.RefreshAsync();
-
-                    var progressService = QuestProgressService.Instance;
-                    if (await progressService.InitializeFromDbAsync(currentProfile))
-                    {
-                        QuestGraphService.Instance.Initialize(progressService.AllTasks.ToList());
-                    }
-                    await ObjectiveProgressService.Instance.LoadObjectiveProgressAsync();
-
-                    if (_questListPage != null && _questListPage.IsVisible)
-                    {
-                        await _questListPage.ReloadDataAsync();
-                    }
                 }
                 else
                 {

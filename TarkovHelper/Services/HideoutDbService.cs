@@ -107,6 +107,8 @@ public sealed class HideoutDbService
 
         try
         {
+            try { await HideoutWikiRefreshService.ApplyBundledAsync(_databasePath); }
+            catch (Exception ex) { Services.Logging.Log.For<HideoutDbService>().Warning($"Bundled hideout overlay failed; keeping existing data: {ex.Message}"); }
             var connectionString = $"Data Source={_databasePath};Mode=ReadOnly";
             await using var connection = new SqliteConnection(connectionString);
             await connection.OpenAsync();
@@ -256,6 +258,9 @@ public sealed class HideoutDbService
             return;
 
         // JOIN Items table to get Base64 ItemId (Items.Id) that matches QuestRequiredItems
+        var seasonRule = await HideoutWikiRefreshService.ReadSeasonRuleAsync(connection);
+        var profile = ProfileService.Instance.CurrentProfile;
+        var now = DateTimeOffset.UtcNow;
         var sql = @"
             SELECT
                 h.StationId, h.Level,
@@ -288,7 +293,7 @@ public sealed class HideoutDbService
                     ItemNormalizedName = itemId,  // Now uses Items.Id (Base64) - same as quest items
                     IconLink = reader.IsDBNull(6) ? null : reader.GetString(6),
                     Count = reader.IsDBNull(7) ? 0 : reader.GetInt32(7),
-                    FoundInRaid = !reader.IsDBNull(8) && reader.GetInt32(8) == 1
+                    FoundInRaid = HideoutWikiParser.RequiresFir(!reader.IsDBNull(8) && reader.GetInt32(8) == 1, profile, seasonRule, now)
                 });
             }
         }

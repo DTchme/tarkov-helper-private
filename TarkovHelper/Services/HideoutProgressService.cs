@@ -18,6 +18,7 @@ namespace TarkovHelper.Services
         /// </summary>
         public static void ResetInstance()
         {
+            if (_instance != null) HideoutDbService.Instance.DataRefreshed -= _instance.OnHideoutDataRefreshed;
             _instance = null;
         }
         private ProfileType _loadedProfile = ProfileType.Pvp;
@@ -37,6 +38,22 @@ namespace TarkovHelper.Services
         private List<HideoutModule> _allModules = new();
 
         public event EventHandler? ProgressChanged;
+
+        public HideoutProgressService()
+        {
+            HideoutDbService.Instance.DataRefreshed += OnHideoutDataRefreshed;
+        }
+
+        private void OnHideoutDataRefreshed(object? sender, EventArgs e)
+        {
+            if (_allModules.Count == 0 || _loadedProfile != ProfileService.Instance.CurrentProfile) return;
+            // Rebind requirements only. Never save/reset a built level during a data refresh.
+            _allModules = HideoutDbService.Instance.AllStations.ToList();
+            _modulesByNormalizedName = _allModules.Where(module => !string.IsNullOrEmpty(module.NormalizedName))
+                .GroupBy(module => module.NormalizedName, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+            ProgressChanged?.Invoke(this, EventArgs.Empty);
+        }
 
         /// <summary>
         /// Initialize service with hideout module data (Asynchronous)

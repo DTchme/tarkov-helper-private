@@ -30,6 +30,7 @@ public sealed class DatabaseUpdateService : IDisposable
     private readonly HttpClient _httpClient;
     private System.Threading.Timer _updateTimer;
     private bool _isUpdating;
+    private readonly SemaphoreSlim _updateGate = new(1, 1);
     private bool _disposed;
 
 
@@ -147,35 +148,16 @@ public sealed class DatabaseUpdateService : IDisposable
     /// </summary>
     public async Task<UpdateCheckResult> CheckAndUpdateAsync()
     {
-        if (_isUpdating)
-            return new UpdateCheckResult(false, false, "이미 퀘스트 데이터 갱신이 진행 중입니다");
+        if (!await _updateGate.WaitAsync(0))
+            return new UpdateCheckResult(false, false, "이미 데이터 갱신이 진행 중입니다");
 
         _isUpdating = true;
-        UpdateCheckStarted?.Invoke(this, EventArgs.Empty);
 
         try
         {
-            var profileType = ProfileService.Instance.CurrentProfile;
-
-            // The English Wiki is authoritative. Existing structured rows are retained
-            // only when they can supplement Wiki objectives with IDs/coordinates.
-            var wikiService = new WikiQuestRefreshService(_httpClient);
-            var wiki = await wikiService.RefreshAsync(_databasePath);
-            var extracts = await ExtractionCatalogService.ApplyBundledAsync(_databasePath);
-            var reviews = 0;
-            string? extractWarning = null;
-            try
-            {
-                reviews = await ExtractionCatalogService.CheckWikiRevisionsAsync(_databasePath, _httpClient);
-            }
-            catch (Exception ex)
-            {
-                _log.Warning($"Extraction Wiki revision check failed: {ex.Message}");
-                extractWarning = "탈출구 Wiki 변경 확인 실패 (기존 검증 자료 유지)";
-            }
-            var changed = wiki.WasChanged || extracts > 0 || reviews > 0;
-
-            if (changed)
+            UpdateCheckStarted?.Invoke(this, EventArgs.Empty);
+            var result = await RefreshSourcesAsync(_databasePath, _httpClient);
+            if (result.WasUpdated)
             {
                 var version = $"wiki-{DateTime.UtcNow:yyyyMMddTHHmmssZ}";
                 RemoteVersion = version;
@@ -183,17 +165,6 @@ public sealed class DatabaseUpdateService : IDisposable
                 OnDatabaseUpdated();
             }
 
-            var message = wiki.WasChanged
-                ? $"Wiki 기준 퀘스트 갱신 완료 ({ProfileService.Instance.GetProfileName(profileType)}): " +
-                  $"영문 Wiki 목록 {wiki.WikiQuestCount}, 신규 {wiki.AddedQuestCount}, " +
-                  $"개별 페이지 {wiki.IndividualPageCount}, 목표 {wiki.ObjectivesFilledCount}, " +
-                  $"선행 조건 {wiki.PrerequisiteCount}"
-                : "영문 Wiki 퀘스트 데이터가 이미 최신입니다";
-            message += extracts > 0 ? $" · 탈출구 {extracts}개 반영" : " · 탈출구 검증 자료 유지";
-            if (reviews > 0) message += $" · Wiki 변경으로 탈출구 {reviews}개 재확인 필요 (지도 데이터 점검 참고)";
-            if (extractWarning != null) message += " · " + extractWarning;
-
-            var result = new UpdateCheckResult(true, changed, message);
             UpdateCheckCompleted?.Invoke(this, result);
             return result;
         }
@@ -207,7 +178,48 @@ public sealed class DatabaseUpdateService : IDisposable
         finally
         {
             _isUpdating = false;
+            _updateGate.Release();
         }
+    }
+
+    public static async Task<UpdateCheckResult> RefreshSourcesAsync(string databasePath, HttpClient client)
+    {
+        var notes = new List<string>();
+        var warnings = new List<string>();
+        var changed = false;
+        var succeeded = 0;
+        async Task Source(string name, Func<Task> action)
+        {
+            try { await action(); succeeded++; }
+            catch (Exception ex)
+            {
+                _log.Warning($"{name} Wiki refresh failed; preserving its previous data: {ex.Message}");
+                warnings.Add($"{name} 갱신 실패: {ex.Message} (기존 자료 유지)");
+            }
+        }
+        await Source("은신처", async () =>
+        {
+            var hideout = await new HideoutWikiRefreshService(client).RefreshAsync(databasePath);
+            changed |= hideout.WasChanged;
+            notes.Add(hideout.Stations == 0 ? "은신처: 더 새로운 검증 자료 유지" :
+                $"은신처 {hideout.Stations}종/{hideout.Levels}단계 확인, 요구 항목 수정 {hideout.Updated}, 추가 {hideout.Added}, 삭제 {hideout.Removed}");
+            if (hideout.UnregisteredStations.Count > 0) warnings.Add("신규 은신처 시설은 ID 확인 필요: " + string.Join(", ", hideout.UnregisteredStations));
+        });
+        await Source("퀘스트", async () =>
+        {
+            var wiki = await new WikiQuestRefreshService(client).RefreshAsync(databasePath);
+            changed |= wiki.WasChanged;
+            notes.Add(wiki.WasChanged ? $"퀘스트 신규 {wiki.AddedQuestCount}, 목표 {wiki.ObjectivesFilledCount} 갱신" : "퀘스트 최신 자료 유지");
+        });
+        await Source("탈출구", async () =>
+        {
+            var imported = await ExtractionCatalogService.ApplyBundledAsync(databasePath);
+            changed |= imported > 0;
+            var reviews = await ExtractionCatalogService.CheckWikiRevisionsAsync(databasePath,client);
+            changed |= reviews > 0;
+            notes.Add($"탈출구 반영 {imported}, 재확인 {reviews}");
+        });
+        return new(succeeded > 0, changed, string.Join(" · ", notes.Concat(warnings)), succeeded > 0 && warnings.Count > 0);
     }
 
     /// <summary>

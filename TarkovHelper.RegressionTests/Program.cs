@@ -7,6 +7,28 @@ using TarkovHelper.Services.Map;
 
 var failures = new List<string>();
 
+if (args.Length == 3 && args[0] == "--build-hideout-snapshot")
+{
+    var snapshot = HideoutWikiParser.ParseApiResponse(File.ReadAllText(args[1]));
+    File.WriteAllText(args[2], System.Text.Json.JsonSerializer.Serialize(snapshot, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+    Console.WriteLine($"Snapshot: {snapshot.Stations.Count} stations / {snapshot.Stations.Sum(station => station.Levels.Count)} levels / " +
+        $"{snapshot.Stations.Sum(station => station.Levels.Sum(level => level.Items.Count))} material requirements");
+    return 0;
+}
+if (args.Length == 2 && args[0] == "--apply-hideout-wiki")
+{
+    var result = HideoutWikiRefreshService.ApplyBundledAsync(args[1]).GetAwaiter().GetResult();
+    Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(result));
+    return 0;
+}
+if (args.Length == 2 && args[0] == "--refresh-hideout-wiki")
+{
+    using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(90) };
+    var result = new HideoutWikiRefreshService(client).RefreshAsync(args[1]).GetAwaiter().GetResult();
+    Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(result));
+    return 0;
+}
+
 if (args.Length == 2 && args[0] == "--apply-reviewed-map-data")
 {
     using (var connection = new SqliteConnection($"Data Source={args[1]};Mode=ReadWrite"))
@@ -1928,6 +1950,7 @@ Run("user database read and write connections use isolated caches", () =>
 });
 
 Run("reviewed map data matching, source guards and extraction regression checks", MapDataRegressionChecks.Run);
+Run("Wiki hideout refresh preserves identities and applies profile-specific FIR safely", HideoutWikiRegressionChecks.Run);
 
 if (failures.Count > 0)
 {

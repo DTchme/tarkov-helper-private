@@ -1,0 +1,2064 @@
+{
+  "FormatVersion": 1,
+  "Revision": 364437,
+  "SourceUpdatedAt": "2026-10-13T22:07:21Z",
+  "Stations": [
+    {
+      "Name": "Air Filtering Unit",
+      "Levels": [
+        {
+          "Level": 1,
+          "Items": [
+            {
+              "Name": "Dollars",
+              "Count": 25000,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Gas mask air filter",
+              "Count": 5,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Military power filter",
+              "Count": 5,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Military corrugated tube",
+              "Count": 10,
+              "FoundInRaid": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Name": "Bitcoin Farm",
+      "Levels": [
+        {
+          "Level": 1,
+          "Items": [
+            {
+              "Name": "T-Shaped plug",
+              "Count": 10,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "VPX Flash Storage Module",
+              "Count": 2,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Power cord",
+              "Count": 15,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Power supply unit",
+              "Count": 10,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "CPU fan",
+              "Count": 15,
+              "FoundInRaid": false
+            }
+          ]
+        },
+        {
+          "Level": 2,
+          "Items": [
+            {
+              "Name": "CPU fan",
+              "Count": 15,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Power supply unit",
+              "Count": 10,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Printed circuit board",
+              "Count": 15,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Phase control relay",
+              "Count": 10,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Military power filter",
+              "Count": 5,
+              "FoundInRaid": false
+            }
+          ]
+        },
+        {
+          "Level": 3,
+          "Items": [
+            {
+              "Name": "CPU fan",
+              "Count": 25,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Silicone tube",
+              "Count": 15,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Electric motor",
+              "Count": 10,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Pressure gauge",
+              "Count": 10,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "6-STEN-140-M military battery",
+              "Count": 2,
+              "FoundInRaid": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Name": "Booze Generator",
+      "Levels": [
+        {
+          "Level": 1,
+          "Items": [
+            {
+              "Name": "Metal spare parts",
+              "Count": 5,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Pressure gauge",
+              "Count": 2,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Radiator helix",
+              "Count": 5,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Silicone tube",
+              "Count": 10,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Pipe grip wrench",
+              "Count": 1,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Analog thermometer",
+              "Count": 2,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Corrugated hose",
+              "Count": 10,
+              "FoundInRaid": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Name": "Cultist Circle",
+      "Levels": [
+        {
+          "Level": 1,
+          "Items": [
+            {
+              "Name": "PAID AntiRoach spray",
+              "Count": 1,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Light bulb",
+              "Count": 5,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Can of white salt",
+              "Count": 3,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "SurvL Survivor Lighter",
+              "Count": 1,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Construction measuring tape",
+              "Count": 1,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "WI-FI Camera",
+              "Count": 1,
+              "FoundInRaid": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Name": "Defective Wall",
+      "Levels": [
+        {
+          "Level": 1,
+          "Items": []
+        },
+        {
+          "Level": 2,
+          "Items": []
+        },
+        {
+          "Level": 3,
+          "Items": []
+        },
+        {
+          "Level": 4,
+          "Items": [
+            {
+              "Name": "Fierce Blow sledgehammer",
+              "Count": 1,
+              "FoundInRaid": false
+            }
+          ]
+        },
+        {
+          "Level": 5,
+          "Items": [
+            {
+              "Name": "Metal cutting scissors",
+              "Count": 1,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Toolset",
+              "Count": 1,
+              "FoundInRaid": false
+            }
+          ]
+        },
+        {
+          "Level": 6,
+          "Items": [
+            {
+              "Name": "Corrugated hose",
+              "Count": 2,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Duct tape",
+              "Count": 1,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Toolset",
+              "Count": 1,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Pliers Elite",
+              "Count": 1,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Metal spare parts",
+              "Count": 5,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Xenomorph sealing foam",
+              "Count": 1,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Bundle of wires",
+              "Count": 2,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Light bulb",
+              "Count": 2,
+              "FoundInRaid": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Name": "Gear Rack",
+      "Levels": [
+        {
+          "Level": 1,
+          "Items": [
+            {
+              "Name": "Roubles",
+              "Count": 300000,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Electric drill",
+              "Count": 1,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Sewing kit",
+              "Count": 1,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Awl",
+              "Count": 1,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Leatherman Multitool",
+              "Count": 1,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Bolts",
+              "Count": 15,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Fleece fabric",
+              "Count": 10,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Energy-saving lamp",
+              "Count": 8,
+              "FoundInRaid": false
+            }
+          ]
+        },
+        {
+          "Level": 2,
+          "Items": [
+            {
+              "Name": "Roubles",
+              "Count": 800000,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Electric drill",
+              "Count": 1,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Duct tape",
+              "Count": 5,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Shustrilo sealing foam",
+              "Count": 5,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Pack of nails",
+              "Count": 8,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Energy-saving lamp",
+              "Count": 12,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Aramid fiber fabric",
+              "Count": 10,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Wrench",
+              "Count": 1,
+              "FoundInRaid": true
+            }
+          ]
+        },
+        {
+          "Level": 3,
+          "Items": [
+            {
+              "Name": "Roubles",
+              "Count": 1200000,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Body armor repair kit",
+              "Count": 1,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Cordura polyamide fabric",
+              "Count": 10,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Metal spare parts",
+              "Count": 15,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "KEKTAPE duct tape",
+              "Count": 10,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Energy-saving lamp",
+              "Count": 15,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Set of files \u0022Master\u0022",
+              "Count": 1,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Ratchet wrench",
+              "Count": 1,
+              "FoundInRaid": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Name": "Generator",
+      "Levels": [
+        {
+          "Level": 1,
+          "Items": [
+            {
+              "Name": "Roubles",
+              "Count": 100000,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Spark plug",
+              "Count": 1,
+              "FoundInRaid": false
+            }
+          ]
+        },
+        {
+          "Level": 2,
+          "Items": [
+            {
+              "Name": "Bulbex cable cutter",
+              "Count": 1,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Phase control relay",
+              "Count": 10,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Electric motor",
+              "Count": 1,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Bundle of wires",
+              "Count": 15,
+              "FoundInRaid": false
+            }
+          ]
+        },
+        {
+          "Level": 3,
+          "Items": [
+            {
+              "Name": "Power supply unit",
+              "Count": 5,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Phase control relay",
+              "Count": 12,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Electric motor",
+              "Count": 3,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Spark plug",
+              "Count": 16,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Metal spare parts",
+              "Count": 10,
+              "FoundInRaid": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Name": "Gym",
+      "Levels": [
+        {
+          "Level": 1,
+          "Items": [
+            {
+              "Name": "Insulating tape",
+              "Count": 5,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Metal cutting scissors",
+              "Count": 1,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "WD-40 (100ml)",
+              "Count": 1,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Toolset",
+              "Count": 1,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Screw nuts",
+              "Count": 5,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Electric drill",
+              "Count": 1,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Bolts",
+              "Count": 5,
+              "FoundInRaid": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Name": "Hall of Fame",
+      "Levels": [
+        {
+          "Level": 1,
+          "Items": [
+            {
+              "Name": "Insulating tape",
+              "Count": 5,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Pack of nails",
+              "Count": 5,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Light bulb",
+              "Count": 5,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Cat figurine",
+              "Count": 1,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Fleece fabric",
+              "Count": 5,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Round pliers",
+              "Count": 1,
+              "FoundInRaid": true
+            }
+          ]
+        },
+        {
+          "Level": 2,
+          "Items": [
+            {
+              "Name": "Tech manual",
+              "Count": 1,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Pliers Elite",
+              "Count": 1,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Toolset",
+              "Count": 1,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Golden rooster figurine",
+              "Count": 1,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Energy-saving lamp",
+              "Count": 10,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Pack of screws",
+              "Count": 6,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Duct tape",
+              "Count": 3,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Xenomorph sealing foam",
+              "Count": 5,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Tube of Poxeram cold welding",
+              "Count": 2,
+              "FoundInRaid": false
+            }
+          ]
+        },
+        {
+          "Level": 3,
+          "Items": [
+            {
+              "Name": "Set of files \u0022Master\u0022",
+              "Count": 1,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Electric drill",
+              "Count": 1,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Bronze lion figurine",
+              "Count": 1,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Energy-saving lamp",
+              "Count": 15,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "KEKTAPE duct tape",
+              "Count": 3,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "T-Shaped plug",
+              "Count": 6,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Metal spare parts",
+              "Count": 15,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Power cord",
+              "Count": 5,
+              "FoundInRaid": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Name": "Heating",
+      "Levels": [
+        {
+          "Level": 1,
+          "Items": [
+            {
+              "Name": "Roubles",
+              "Count": 25000,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Classic matches",
+              "Count": 2,
+              "FoundInRaid": false
+            }
+          ]
+        },
+        {
+          "Level": 2,
+          "Items": [
+            {
+              "Name": "Roubles",
+              "Count": 50000,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Dry fuel",
+              "Count": 5,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Hunting matches",
+              "Count": 2,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Crickent lighter",
+              "Count": 5,
+              "FoundInRaid": false
+            }
+          ]
+        },
+        {
+          "Level": 3,
+          "Items": [
+            {
+              "Name": "Military corrugated tube",
+              "Count": 2,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Radiator helix",
+              "Count": 10,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Bundle of wires",
+              "Count": 10,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Phase control relay",
+              "Count": 4,
+              "FoundInRaid": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Name": "Illumination",
+      "Levels": [
+        {
+          "Level": 1,
+          "Items": [
+            {
+              "Name": "Roubles",
+              "Count": 10000,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Crickent lighter",
+              "Count": 1,
+              "FoundInRaid": false
+            }
+          ]
+        },
+        {
+          "Level": 2,
+          "Items": [
+            {
+              "Name": "Light bulb",
+              "Count": 14,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Bundle of wires",
+              "Count": 10,
+              "FoundInRaid": false
+            }
+          ]
+        },
+        {
+          "Level": 3,
+          "Items": [
+            {
+              "Name": "Roubles",
+              "Count": 50000,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Energy-saving lamp",
+              "Count": 12,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Capacitors",
+              "Count": 7,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Bundle of wires",
+              "Count": 12,
+              "FoundInRaid": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Name": "Intelligence Center",
+      "Levels": [
+        {
+          "Level": 1,
+          "Items": [
+            {
+              "Name": "Power cord",
+              "Count": 1,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Intelligence folder",
+              "Count": 1,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Topographic survey maps",
+              "Count": 1,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Factory plan map",
+              "Count": 1,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Working LCD",
+              "Count": 1,
+              "FoundInRaid": false
+            }
+          ]
+        },
+        {
+          "Level": 2,
+          "Items": [
+            {
+              "Name": "Intelligence folder",
+              "Count": 3,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Secure Flash drive",
+              "Count": 3,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Power cord",
+              "Count": 7,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Damaged hard drive",
+              "Count": 8,
+              "FoundInRaid": false
+            }
+          ]
+        },
+        {
+          "Level": 3,
+          "Items": [
+            {
+              "Name": "Military cable",
+              "Count": 8,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Military COFDM Wireless Signal Transmitter",
+              "Count": 2,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Far-forward GPS Signal Amplifier Unit",
+              "Count": 1,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "VPX Flash Storage Module",
+              "Count": 2,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Military flash drive",
+              "Count": 8,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Secure magnetic tape cassette",
+              "Count": 2,
+              "FoundInRaid": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Name": "Lavatory",
+      "Levels": [
+        {
+          "Level": 1,
+          "Items": [
+            {
+              "Name": "Roubles",
+              "Count": 2000,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Toilet paper",
+              "Count": 1,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Toothpaste",
+              "Count": 1,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Soap",
+              "Count": 1,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Awl",
+              "Count": 1,
+              "FoundInRaid": false
+            }
+          ]
+        },
+        {
+          "Level": 2,
+          "Items": [
+            {
+              "Name": "KEKTAPE duct tape",
+              "Count": 3,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Corrugated hose",
+              "Count": 6,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Pack of screws",
+              "Count": 6,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Electric drill",
+              "Count": 1,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Sewing kit",
+              "Count": 2,
+              "FoundInRaid": false
+            }
+          ]
+        },
+        {
+          "Level": 3,
+          "Items": [
+            {
+              "Name": "Xenomorph sealing foam",
+              "Count": 6,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Corrugated hose",
+              "Count": 10,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Pressure gauge",
+              "Count": 2,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Toolset",
+              "Count": 1,
+              "FoundInRaid": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Name": "Library",
+      "Levels": [
+        {
+          "Level": 1,
+          "Items": [
+            {
+              "Name": "Roubles",
+              "Count": 400000,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "BakeEzy cook book",
+              "Count": 1,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Slim diary",
+              "Count": 5,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Diary",
+              "Count": 5,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Tech manual",
+              "Count": 8,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Chainlet",
+              "Count": 2,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Horse figurine",
+              "Count": 1,
+              "FoundInRaid": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Name": "Medstation",
+      "Levels": [
+        {
+          "Level": 1,
+          "Items": [
+            {
+              "Name": "Roubles",
+              "Count": 50000,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Disposable syringe",
+              "Count": 1,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Pile of meds",
+              "Count": 1,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Aseptic bandage",
+              "Count": 2,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Bottle of OLOLO Multivitamins",
+              "Count": 1,
+              "FoundInRaid": false
+            }
+          ]
+        },
+        {
+          "Level": 2,
+          "Items": [
+            {
+              "Name": "Roubles",
+              "Count": 150000,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Bottle of saline solution",
+              "Count": 6,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Medical tools",
+              "Count": 3,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Medical bloodset",
+              "Count": 2,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Esmarch tourniquet",
+              "Count": 10,
+              "FoundInRaid": false
+            }
+          ]
+        },
+        {
+          "Level": 3,
+          "Items": [
+            {
+              "Name": "Roubles",
+              "Count": 500000,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Ophthalmoscope",
+              "Count": 1,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Bottle of saline solution",
+              "Count": 10,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "LEDX Skin Transilluminator",
+              "Count": 1,
+              "FoundInRaid": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Name": "Nutrition Unit",
+      "Levels": [
+        {
+          "Level": 1,
+          "Items": [
+            {
+              "Name": "Roubles",
+              "Count": 25000,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Can of white salt",
+              "Count": 1,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Power cord",
+              "Count": 1,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Phase control relay",
+              "Count": 2,
+              "FoundInRaid": false
+            }
+          ]
+        },
+        {
+          "Level": 2,
+          "Items": [
+            {
+              "Name": "Alkaline cleaner for heat exchangers",
+              "Count": 2,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Wrench",
+              "Count": 4,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Corrugated hose",
+              "Count": 4,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Phase control relay",
+              "Count": 3,
+              "FoundInRaid": false
+            }
+          ]
+        },
+        {
+          "Level": 3,
+          "Items": [
+            {
+              "Name": "Roubles",
+              "Count": 125000,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Can of Majaica coffee beans",
+              "Count": 5,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Pack of sodium bicarbonate",
+              "Count": 5,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Smoked Chimney drain cleaner",
+              "Count": 2,
+              "FoundInRaid": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Name": "Rest Space",
+      "Levels": [
+        {
+          "Level": 1,
+          "Items": [
+            {
+              "Name": "Roubles",
+              "Count": 10000,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Classic matches",
+              "Count": 1,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Duct tape",
+              "Count": 1,
+              "FoundInRaid": false
+            }
+          ]
+        },
+        {
+          "Level": 2,
+          "Items": [
+            {
+              "Name": "Roubles",
+              "Count": 75000,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Magnet",
+              "Count": 1,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "DVD drive",
+              "Count": 1,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Energy-saving lamp",
+              "Count": 5,
+              "FoundInRaid": false
+            }
+          ]
+        },
+        {
+          "Level": 3,
+          "Items": [
+            {
+              "Name": "GreenBat lithium battery",
+              "Count": 4,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Bundle of wires",
+              "Count": 10,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Capacitors",
+              "Count": 5,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Power cord",
+              "Count": 5,
+              "FoundInRaid": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Name": "Scav Case",
+      "Levels": [
+        {
+          "Level": 1,
+          "Items": [
+            {
+              "Name": "Golden rooster figurine",
+              "Count": 1,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Lucky Scav Junk box",
+              "Count": 1,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Bottle of Fierce Hatchling moonshine",
+              "Count": 3,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Roler Submariner gold wrist watch",
+              "Count": 4,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Golden neck chain",
+              "Count": 8,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Gold skull ring",
+              "Count": 6,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Bronze lion figurine",
+              "Count": 3,
+              "FoundInRaid": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Name": "Security",
+      "Levels": [
+        {
+          "Level": 1,
+          "Items": [
+            {
+              "Name": "Roubles",
+              "Count": 20000,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Construction measuring tape",
+              "Count": 1,
+              "FoundInRaid": false
+            }
+          ]
+        },
+        {
+          "Level": 2,
+          "Items": [
+            {
+              "Name": "Roubles",
+              "Count": 45000,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "WD-40 (100ml)",
+              "Count": 2,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Pliers Elite",
+              "Count": 1,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "TP-200 TNT brick",
+              "Count": 2,
+              "FoundInRaid": false
+            }
+          ]
+        },
+        {
+          "Level": 3,
+          "Items": [
+            {
+              "Name": "NIXXOR lens",
+              "Count": 8,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Working LCD",
+              "Count": 2,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Bundle of wires",
+              "Count": 10,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "SSD drive",
+              "Count": 1,
+              "FoundInRaid": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Name": "Shooting Range",
+      "Levels": [
+        {
+          "Level": 1,
+          "Items": [
+            {
+              "Name": "Roubles",
+              "Count": 20000,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Metal spare parts",
+              "Count": 1,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Bolts",
+              "Count": 1,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Screw nuts",
+              "Count": 1,
+              "FoundInRaid": false
+            }
+          ]
+        },
+        {
+          "Level": 2,
+          "Items": [
+            {
+              "Name": "Electric motor",
+              "Count": 3,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Construction measuring tape",
+              "Count": 1,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Tube of Poxeram cold welding",
+              "Count": 3,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Toolset",
+              "Count": 1,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Pack of screws",
+              "Count": 3,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Electric drill",
+              "Count": 1,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Metal spare parts",
+              "Count": 8,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "WI-FI Camera",
+              "Count": 3,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Bundle of wires",
+              "Count": 6,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Energy-saving lamp",
+              "Count": 6,
+              "FoundInRaid": false
+            }
+          ]
+        },
+        {
+          "Level": 3,
+          "Items": [
+            {
+              "Name": "Set of files \u0022Master\u0022",
+              "Count": 1,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Printed circuit board",
+              "Count": 5,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Bundle of wires",
+              "Count": 10,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Metal spare parts",
+              "Count": 5,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Capacitors",
+              "Count": 5,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Phase control relay",
+              "Count": 5,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Power cord",
+              "Count": 5,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Leatherman Multitool",
+              "Count": 1,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Tech manual",
+              "Count": 1,
+              "FoundInRaid": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Name": "Solar Power",
+      "Levels": [
+        {
+          "Level": 1,
+          "Items": [
+            {
+              "Name": "Euros",
+              "Count": 25000,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Phased array element",
+              "Count": 6,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Advanced current converter",
+              "Count": 1,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Working LCD",
+              "Count": 3,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Military cable",
+              "Count": 10,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Military power filter",
+              "Count": 10,
+              "FoundInRaid": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Name": "Stash",
+      "Levels": [
+        {
+          "Level": 1,
+          "Items": []
+        },
+        {
+          "Level": 2,
+          "Items": [
+            {
+              "Name": "Roubles",
+              "Count": 2500000,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "WD-40 (100ml)",
+              "Count": 4,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Hand drill",
+              "Count": 1,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Pack of nails",
+              "Count": 5,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Pack of screws",
+              "Count": 10,
+              "FoundInRaid": false
+            }
+          ]
+        },
+        {
+          "Level": 3,
+          "Items": [
+            {
+              "Name": "Roubles",
+              "Count": 8500000,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Electric drill",
+              "Count": 2,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Pack of screws",
+              "Count": 15,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Pack of nails",
+              "Count": 7,
+              "FoundInRaid": false
+            }
+          ]
+        },
+        {
+          "Level": 4,
+          "Items": [
+            {
+              "Name": "Euros",
+              "Count": 200000,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Screw nuts",
+              "Count": 10,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Bolts",
+              "Count": 10,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Shustrilo sealing foam",
+              "Count": 8,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Ratchet wrench",
+              "Count": 2,
+              "FoundInRaid": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Name": "Vents",
+      "Levels": [
+        {
+          "Level": 1,
+          "Items": [
+            {
+              "Name": "Roubles",
+              "Count": 25000,
+              "FoundInRaid": false
+            }
+          ]
+        },
+        {
+          "Level": 2,
+          "Items": [
+            {
+              "Name": "Metal spare parts",
+              "Count": 5,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "CPU fan",
+              "Count": 5,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Car battery",
+              "Count": 1,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Electric motor",
+              "Count": 1,
+              "FoundInRaid": false
+            }
+          ]
+        },
+        {
+          "Level": 3,
+          "Items": [
+            {
+              "Name": "Printed circuit board",
+              "Count": 5,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Electric motor",
+              "Count": 4,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Metal spare parts",
+              "Count": 10,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Bundle of wires",
+              "Count": 14,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Car battery",
+              "Count": 4,
+              "FoundInRaid": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Name": "Water Collector",
+      "Levels": [
+        {
+          "Level": 1,
+          "Items": [
+            {
+              "Name": "Duct tape",
+              "Count": 3,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Screw nuts",
+              "Count": 5,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Bolts",
+              "Count": 5,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Corrugated hose",
+              "Count": 4,
+              "FoundInRaid": false
+            }
+          ]
+        },
+        {
+          "Level": 2,
+          "Items": [
+            {
+              "Name": "Toolset",
+              "Count": 2,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Corrugated hose",
+              "Count": 6,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Electric motor",
+              "Count": 2,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "KEKTAPE duct tape",
+              "Count": 5,
+              "FoundInRaid": false
+            }
+          ]
+        },
+        {
+          "Level": 3,
+          "Items": [
+            {
+              "Name": "Roubles",
+              "Count": 20000,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Ratchet wrench",
+              "Count": 1,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Pliers Elite",
+              "Count": 2,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Shustrilo sealing foam",
+              "Count": 10,
+              "FoundInRaid": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Name": "Weapon Rack",
+      "Levels": [
+        {
+          "Level": 1,
+          "Items": [
+            {
+              "Name": "Pack of nails",
+              "Count": 5,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Energy-saving lamp",
+              "Count": 5,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Insulating tape",
+              "Count": 5,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Hand drill",
+              "Count": 1,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Bolts",
+              "Count": 15,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Metal cutting scissors",
+              "Count": 1,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Xenomorph sealing foam",
+              "Count": 5,
+              "FoundInRaid": false
+            }
+          ]
+        },
+        {
+          "Level": 2,
+          "Items": [
+            {
+              "Name": "Metal spare parts",
+              "Count": 10,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Pack of screws",
+              "Count": 10,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Electric drill",
+              "Count": 1,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Bundle of wires",
+              "Count": 10,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Set of files \u0022Master\u0022",
+              "Count": 1,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Tube of Poxeram cold welding",
+              "Count": 3,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Energy-saving lamp",
+              "Count": 10,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Duct tape",
+              "Count": 10,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Weapon parts",
+              "Count": 5,
+              "FoundInRaid": false
+            }
+          ]
+        },
+        {
+          "Level": 3,
+          "Items": [
+            {
+              "Name": "Electric drill",
+              "Count": 1,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Energy-saving lamp",
+              "Count": 15,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Metal spare parts",
+              "Count": 10,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "KEKTAPE duct tape",
+              "Count": 5,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "Bundle of wires",
+              "Count": 15,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Shustrilo sealing foam",
+              "Count": 5,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Tech manual",
+              "Count": 1,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "FireKlean gun lube",
+              "Count": 1,
+              "FoundInRaid": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Name": "Workbench",
+      "Levels": [
+        {
+          "Level": 1,
+          "Items": [
+            {
+              "Name": "Screw nuts",
+              "Count": 2,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Bolts",
+              "Count": 2,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Leatherman Multitool",
+              "Count": 1,
+              "FoundInRaid": false
+            }
+          ]
+        },
+        {
+          "Level": 2,
+          "Items": [
+            {
+              "Name": "Bolts",
+              "Count": 10,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Toolset",
+              "Count": 3,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Set of files \u0022Master\u0022",
+              "Count": 1,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Electric drill",
+              "Count": 2,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Weapon parts",
+              "Count": 3,
+              "FoundInRaid": false
+            }
+          ]
+        },
+        {
+          "Level": 3,
+          "Items": [
+            {
+              "Name": "Roubles",
+              "Count": 395000,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Can of thermite",
+              "Count": 5,
+              "FoundInRaid": false
+            },
+            {
+              "Name": "Pliers Elite",
+              "Count": 2,
+              "FoundInRaid": true
+            },
+            {
+              "Name": "FireKlean gun lube",
+              "Count": 1,
+              "FoundInRaid": true
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "SeasonRule": {
+    "Name": "Season 1: KORD BREACH",
+    "StartsOn": "2026-08-03",
+    "EndsOnExclusive": "2026-12-07",
+    "SourceRevision": 363245
+  }
+}
