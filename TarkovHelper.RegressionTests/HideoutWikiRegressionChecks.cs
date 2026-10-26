@@ -71,6 +71,13 @@ internal static class HideoutWikiRegressionChecks
             newer.Stations[0].Levels[0].Items[0] = newer.Stations[0].Levels[0].Items[0] with { Count = newer.Stations[0].Levels[0].Items[0].Count+1 };
             var quantityChange = HideoutWikiRefreshService.ApplyAsync(database,newer).GetAwaiter().GetResult();
             Check(quantityChange.Updated == 1 && quantityChange.Added == 0 && quantityChange.Removed == 0,"a real future quantity change must update just its existing row");
+            var previousCpuFanId = Rows(database,"SELECT DISTINCT ItemId FROM HideoutItemRequirements WHERE ItemName='CPU fan'");
+            var addedMaterial = Clone(newer) with { Revision = newer.Revision+1 };
+            addedMaterial.Stations.Single(station => station.Name=="Heating").Levels.Single(level => level.Level==1).Items.Add(new("CPU fan",2,false));
+            var addition = HideoutWikiRefreshService.ApplyAsync(database,addedMaterial).GetAwaiter().GetResult();
+            Check(addition.Added==1 && addition.Removed==0,"new material at an existing facility must be imported safely");
+            Check(Rows(database,"SELECT ItemId FROM HideoutItemRequirements WHERE StationId=(SELECT Id FROM HideoutStations WHERE Name='Heating') AND Level=1 AND ItemName='CPU fan'")==previousCpuFanId,
+                "new requirements must reuse the existing inventory key rather than mix Wiki IDs with legacy game IDs");
             var afterNewer = Fingerprint(database,false);
             Check(!HideoutWikiRefreshService.ApplyAsync(database,snapshot,true).GetAwaiter().GetResult().WasChanged && afterNewer == Fingerprint(database,false),"old bundled data must never overwrite a newer Wiki refresh");
         }

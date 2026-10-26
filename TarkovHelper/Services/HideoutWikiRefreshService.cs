@@ -16,7 +16,7 @@ public sealed class HideoutWikiRefreshService(HttpClient client)
     public static string SnapshotPath => Path.Combine(AppContext.BaseDirectory, "Assets", "DB", "Data", "hideout_wiki_snapshot.json");
     private static readonly SemaphoreSlim Gate = new(1, 1);
     private sealed record Item(string Id, string Name, string? Ko, string? Ja, string? Icon);
-    private sealed record Existing(string Id, string Station, int Level, string ItemId, int Count, bool Fir);
+    private sealed record Existing(string Id, string Station, int Level, string ItemId, int Count, bool Fir, string StoredItemId);
     private sealed record Planned(string Station, int Level, Item Item, HideoutWikiItem Requirement, int Sort);
 
     public async Task<HideoutWikiRefreshResult> RefreshAsync(string databasePath, CancellationToken cancellationToken = default)
@@ -78,7 +78,8 @@ public sealed class HideoutWikiRefreshService(HttpClient client)
                     savedSignature = reader.GetString(2); savedActive = reader.GetInt32(3) != 0;
                 }
             }
-            if ((bundled && savedRevision >= snapshot.Revision && savedFormat >= snapshot.FormatVersion) || savedRevision > snapshot.Revision)
+            if ((bundled && savedRevision >= snapshot.Revision && savedFormat >= snapshot.FormatVersion) ||
+                savedRevision > snapshot.Revision || savedFormat > snapshot.FormatVersion)
                 return new(false, 0, 0, 0, 0, 0, 0, null, Array.Empty<string>());
 
             var aliases = new Dictionary<string, HashSet<string>>();
@@ -96,7 +97,7 @@ public sealed class HideoutWikiRefreshService(HttpClient client)
                 while (await reader.ReadAsync(cancellationToken))
                 {
                     var id = reader.IsDBNull(1) || string.IsNullOrWhiteSpace(reader.GetString(1)) ? reader.GetString(0) : reader.GetString(1);
-                    var name = reader.IsDBNull(3) ? reader.GetString(2) : reader.GetString(3);
+                    var name = reader.IsDBNull(3) || string.IsNullOrWhiteSpace(reader.GetString(3)) ? reader.GetString(2) : reader.GetString(3);
                     items[id] = new(id, name, Text(reader, 4), Text(reader, 5), Text(reader, 7));
                     canonicalIds[id] = id; canonicalIds[reader.GetString(0)] = id;
                     Alias(name, id); Alias(reader.GetString(2), id);
@@ -117,7 +118,7 @@ public sealed class HideoutWikiRefreshService(HttpClient client)
                     if (!items.ContainsKey(id) && aliases.TryGetValue(HideoutWikiParser.Key(reader.GetString(4)),out var named) && named.Count == 1)
                         id = named.Single();
                     if (!items.ContainsKey(id)) items[id] = new(id,reader.GetString(4),Text(reader,7),Text(reader,8),Text(reader,9));
-                    var row = new Existing(reader.GetString(0), reader.GetString(1), reader.GetInt32(2), id, reader.GetInt32(5), reader.GetInt32(6) != 0);
+                    var row = new Existing(reader.GetString(0), reader.GetString(1), reader.GetInt32(2), id, reader.GetInt32(5), reader.GetInt32(6) != 0,reader.GetString(3));
                     if (!existing.TryAdd((row.Station,row.Level,id), row)) throw new InvalidDataException("은신처 재료 중복 ID를 먼저 확인해야 합니다.");
                     Alias(reader.GetString(4), id);
                 }
@@ -157,6 +158,14 @@ public sealed class HideoutWikiRefreshService(HttpClient client)
             var updates = planned.Where(pair => existing.TryGetValue(pair.Key,out var old) &&
                 (old.Count != pair.Value.Requirement.Count || old.Fir != pair.Value.Requirement.FoundInRaid)).ToList();
             var additions = planned.Where(pair => !existing.ContainsKey(pair.Key)).ToList();
+            var storageIds = new Dictionary<string,string>();
+            foreach (var addition in additions.Select(pair => pair.Value))
+            {
+                var stored = existing.Values.Where(row => row.ItemId == addition.Item.Id).Select(row => row.StoredItemId).Distinct().ToList();
+                if (stored.Count > 1) throw new InvalidDataException($"기존 아이템 저장 ID가 혼용되어 재확인이 필요합니다: {addition.Item.Name}");
+                // Reuse the same inventory key across facilities, including legacy game IDs.
+                storageIds[addition.Item.Id] = stored.SingleOrDefault() ?? addition.Item.Id;
+            }
             var removals = existing.Where(pair => !planned.ContainsKey(pair.Key)).ToList();
             var unknown = snapshot.Stations.Where(station => !stations.ContainsKey(HideoutWikiParser.Key(station.Name))).Select(station => station.Name).ToArray();
             var levelCount = stations.Values.Sum(station => station.Levels.Count);
@@ -180,16 +189,17 @@ public sealed class HideoutWikiRefreshService(HttpClient client)
             {
                 var plan = pair.Value;
                 var old = existing.GetValueOrDefault(pair.Key);
+                var storedItemId = old?.StoredItemId ?? storageIds[plan.Item.Id];
                 var sql = old != null ? "UPDATE HideoutItemRequirements SET Count=@count,FoundInRaid=@fir,UpdatedAt=@at WHERE Id=@id" : @"
                     INSERT INTO HideoutItemRequirements (Id,StationId,Level,ItemId,ItemName,ItemNameKO,ItemNameJA,IconLink,Count,FoundInRaid,SortOrder,UpdatedAt)
                     VALUES (@id,@station,@level,@item,@name,@ko,@ja,@icon,@count,@fir,@sort,@at)";
                 await using var update = new SqliteCommand(sql, connection, transaction);
-                update.Parameters.AddWithValue("@id", old?.Id ?? $"{plan.Station}_{plan.Level}_{plan.Item.Id}");
+                update.Parameters.AddWithValue("@id", old?.Id ?? $"{plan.Station}_{plan.Level}_{storedItemId}");
                 update.Parameters.AddWithValue("@count", plan.Requirement.Count);
                 update.Parameters.AddWithValue("@fir", plan.Requirement.FoundInRaid ? 1 : 0);
                 update.Parameters.AddWithValue("@at", at);
                 update.Parameters.AddWithValue("@station", plan.Station); update.Parameters.AddWithValue("@level", plan.Level);
-                update.Parameters.AddWithValue("@item", plan.Item.Id); update.Parameters.AddWithValue("@name", plan.Item.Name);
+                update.Parameters.AddWithValue("@item", storedItemId); update.Parameters.AddWithValue("@name", plan.Item.Name);
                 update.Parameters.AddWithValue("@ko", (object?)plan.Item.Ko ?? DBNull.Value);
                 update.Parameters.AddWithValue("@ja", (object?)plan.Item.Ja ?? DBNull.Value);
                 update.Parameters.AddWithValue("@icon", (object?)plan.Item.Icon ?? DBNull.Value); update.Parameters.AddWithValue("@sort", plan.Sort);
