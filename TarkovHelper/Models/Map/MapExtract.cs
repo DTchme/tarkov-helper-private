@@ -69,6 +69,9 @@ public sealed class MapExtract
     /// 층 ID (다층 맵에서 층 구분용, 예: "main", "basement", "level2")
     /// </summary>
     public string? FloorId { get; set; }
+
+    public string DetailsTooltip { get; set; } = "";
+    public bool RequiresReview { get; set; }
 }
 
 /// <summary>

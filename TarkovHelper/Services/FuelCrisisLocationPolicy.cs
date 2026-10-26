@@ -60,20 +60,22 @@ public static class FuelCrisisLocationPolicy
     public static async Task<int> ApplyAsync(
         SqliteConnection connection,
         SqliteTransaction transaction,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IReadOnlySet<string>? eligibleQuestIds = null)
     {
         var targets = new List<(string Id, FuelCrisisArea Area)>();
         await using (var select = new SqliteCommand(@"
             SELECT objective.Id,
                    COALESCE(NULLIF(quest.NameEN, ''), quest.Name, ''),
                    objective.ObjectiveType,
-                   objective.Description
+                   objective.Description, objective.QuestId
             FROM QuestObjectives objective
             JOIN Quests quest ON quest.Id=objective.QuestId", connection, transaction))
         await using (var reader = await select.ExecuteReaderAsync(cancellationToken))
         {
             while (await reader.ReadAsync(cancellationToken))
             {
+                if (eligibleQuestIds != null && !eligibleQuestIds.Contains(reader.GetString(4))) continue;
                 var objectiveId = reader.GetString(0);
                 var questName = reader.IsDBNull(1) ? null : reader.GetString(1);
                 var objectiveType = reader.IsDBNull(2) ? null : reader.GetString(2);

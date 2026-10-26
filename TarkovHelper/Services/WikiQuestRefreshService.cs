@@ -624,7 +624,7 @@ public sealed class WikiQuestRefreshService
     private static HttpRequestMessage CreateWikiRequest(string url)
     {
         var request = new HttpRequestMessage(HttpMethod.Get, url);
-        request.Headers.UserAgent.ParseAdd("TarkovHelper/1.5.40 (+English-Fandom-Wiki quest sync)");
+        request.Headers.UserAgent.ParseAdd("TarkovHelper/1.5.41 (+English-Fandom-Wiki quest sync)");
         return request;
     }
 
@@ -637,7 +637,7 @@ public sealed class WikiQuestRefreshService
             Uri.EscapeDataString(page);
 
         using var request = new HttpRequestMessage(HttpMethod.Get, apiUrl);
-        request.Headers.UserAgent.ParseAdd("TarkovHelper/1.5.40 (+official wiki sync)");
+        request.Headers.UserAgent.ParseAdd("TarkovHelper/1.5.41 (+official wiki sync)");
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
 
@@ -1060,11 +1060,7 @@ public sealed class WikiQuestRefreshService
             // Wiki objective text is authoritative, but coordinates are supplemental data.
             // Restore curated Wiki locations after every overlay so missing or stale markers
             // cannot survive objective matching or be restored by an older API source.
-            await V3FlashDriveLocationPolicy.ApplyAsync(connection, tx, cancellationToken);
-            await FuelCrisisLocationPolicy.ApplyAsync(connection, tx, cancellationToken);
-            await MetalBirdsQuestPolicy.ApplyAsync(connection, tx, cancellationToken);
-            await PostmanPatLocationPolicy.ApplyAsync(connection, tx, cancellationToken);
-            await RevisionReserveLocationPolicy.ApplyAsync(connection, tx, cancellationToken);
+            await CuratedQuestDataService.ApplyAsync(connection, tx, cancellationToken);
 
             await tx.CommitAsync(cancellationToken);
             return new OverlayStats(added, updated, objectivesFilled, prerequisites, requiredItems, collectorCount);
@@ -1267,14 +1263,21 @@ public sealed class WikiQuestRefreshService
                 usedIds,
                 cancellationToken);
 
-            var mapName = metadata?.MapName;
+            var explicitMap = ObjectiveMetadataMatcher.InferMap(rawObjective);
+            if (metadata != null && explicitMap != null && !string.IsNullOrWhiteSpace(metadata.MapName) &&
+                !TarkovHelper.Models.Map.MapConfig.SplitMapExpression(metadata.MapName)
+                    .Any(map => TarkovHelper.Models.Map.MapConfig.MapNamesMatch(map, explicitMap)))
+                metadata = metadata with { LocationName = null, LocationPoints = null, OptionalPoints = null };
+            var mapName = explicitMap ?? metadata?.MapName;
             if (string.IsNullOrWhiteSpace(mapName))
                 mapName = string.IsNullOrWhiteSpace(row.Map) ? null : row.Map;
             var conditions = JsonSerializer.Serialize(new
             {
                 source = "fandom-wiki",
                 revision = row.RevisionId,
-                supplementalMetadataPreserved = metadata != null
+                supplementalMetadataPreserved = metadata != null,
+                metadataMatch = metadata == null ? "unverified" : "compatible",
+                previousObjectiveId = metadata?.Id
             });
 
             await using var insert = new SqliteCommand(@"
@@ -1495,49 +1498,11 @@ public sealed class WikiQuestRefreshService
         IEnumerable<ExistingObjectiveMetadata> candidates,
         ISet<string> usedIds)
     {
-        var normalized = NormalizeObjectiveText(objective);
-        var normalizedRaw = NormalizeObjectiveText(rawObjective);
         var available = candidates.Where(item => !usedIds.Contains(item.Id)).ToList();
-        var exact = available.FirstOrDefault(item =>
-        {
-            var candidate = NormalizeObjectiveText(item.Description);
-            return candidate == normalized || candidate == normalizedRaw;
-        });
-        if (exact != null)
-            return exact;
-
-        return available
-            .Select(item =>
-            {
-                var candidate = NormalizeObjectiveText(item.Description);
-                return (Item: item, Score: Math.Max(
-                    TokenSimilarity(normalized, candidate),
-                    TokenSimilarity(normalizedRaw, candidate)));
-            })
-            .Where(match => match.Score >= 0.55)
-            .OrderByDescending(match => match.Score)
-            .Select(match => match.Item)
-            .FirstOrDefault();
+        var match = ObjectiveMetadataMatcher.FindMatch(objective, rawObjective,
+            available.Select(item => new ObjectiveMetadataCandidate(item.Description, item.ObjectiveType, item.MapName, item.ItemName)).ToList());
+        return match < 0 ? null : available[match];
     }
-
-    private static double TokenSimilarity(string left, string right)
-    {
-        var leftTokens = Regex.Matches(left, @"[a-z0-9가-힣]+")
-            .Select(match => match.Value)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var rightTokens = Regex.Matches(right, @"[a-z0-9가-힣]+")
-            .Select(match => match.Value)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        if (leftTokens.Count == 0 || rightTokens.Count == 0)
-            return 0;
-
-        var intersection = leftTokens.Count(rightTokens.Contains);
-        var union = leftTokens.Count + rightTokens.Count - intersection;
-        return union == 0 ? 0 : (double)intersection / union;
-    }
-
-    private static string NormalizeObjectiveText(string value) =>
-        Regex.Replace((value ?? string.Empty).ToLowerInvariant(), @"[^a-z0-9가-힣]+", " ").Trim();
 
     private static string InferObjectiveType(string objective)
     {

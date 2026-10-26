@@ -76,6 +76,8 @@ public class MapMarker
     /// </summary>
     public string? FloorId { get; set; }
 
+    public Services.ExtractionCatalogEntry? ExtractionDetails { get; set; }
+
     /// <summary>
     /// Get icon filename for this marker type
     /// </summary>

@@ -616,6 +616,9 @@
                                                        TextWrapping="Wrap"
                                                        ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
                                         </Grid>
+                                        <Button Content="지도 데이터 점검" HorizontalAlignment="Left" Padding="12,8"
+                                                Click="BtnAuditMapData_Click"
+                                                ToolTip="전체 퀘스트의 좌표 누락·잘못된 형식·재검증 대상을 확인합니다."/>
                                     </StackPanel>
                                 </Border>
 

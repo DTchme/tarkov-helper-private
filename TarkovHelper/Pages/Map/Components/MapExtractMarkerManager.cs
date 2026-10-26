@@ -232,13 +232,15 @@ public class MapExtractMarkerManager
             Padding = new Thickness(4 * mapScale, 2 * mapScale, 4 * mapScale, 2 * mapScale),
             Child = new TextBlock
             { 
-                Text = displayName,
+                Text = displayName + (extract.RequiresReview && !displayName.Contains("확인 필요") ? " [확인 필요]" : ""),
                 FontSize = textSize,
                 FontWeight = FontWeights.SemiBold,
                 Foreground = new SolidColorBrush(fillColor),
                 TextAlignment = TextAlignment.Center
             }
         };
+        nameLabel.ToolTip = new TextBlock { Text = extract.DetailsTooltip, TextWrapping = TextWrapping.Wrap, MaxWidth = 450 };
+        ToolTipService.SetShowDuration(nameLabel, 30000);
         labelStackPanel.Children.Add(nameLabel);
 
         // 층 뱃지 (다층 맵에서 다른 층일 때만 표시) - GetFloorIndicator 사용하여 화살표 포함
@@ -320,8 +322,10 @@ public class MapExtractMarkerManager
             canvas.Opacity = 0.5;
         }
 
-        // 마우스 이벤트 무시 (Mouse Through) - 탈출구 마커는 클릭/호버 불필요
-        canvas.IsHitTestVisible = false;
+        // Hover explains conditions/source; unhandled drag/wheel still bubble to the map.
+        glow.IsHitTestVisible = false;
+        mainCircle.IsHitTestVisible = false;
+        iconPath.IsHitTestVisible = false;
 
         // 보정 모드용 드래그 이벤트 설정 (콜백으로 전달)
         CalibrationMarkerSetup?.Invoke(canvas, extract);

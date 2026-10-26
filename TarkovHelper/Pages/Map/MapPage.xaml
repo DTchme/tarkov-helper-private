@@ -374,6 +374,7 @@
                                                     <!-- 좌표가 없어 목록에만 표시되는 목표 -->
                                                     <Border Background="#455A64" CornerRadius="3" Padding="5,2" Margin="4,0,0,0"
                                                             Visibility="{Binding ListOnlyBadgeVisibility}"
+                                                            ToolTip="이 맵의 목표입니다. 확인된 개별 좌표가 없어 목록에 표시하며 지도에 임의의 핀을 만들지 않습니다."
                                                             VerticalAlignment="Center">
                                                         <TextBlock Text="{Binding ListOnlyDisplay}"
                                                                    FontSize="11" Foreground="White" FontWeight="SemiBold"

@@ -50,7 +50,8 @@ public static class MetalBirdsQuestPolicy
     public static async Task<int> ApplyAsync(
         SqliteConnection connection,
         SqliteTransaction transaction,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IReadOnlySet<string>? eligibleQuestIds = null)
     {
         // The Wiki refresh normally creates these tables first, but the API
         // refresh also calls this policy. Keep the policy safe for databases
@@ -63,6 +64,7 @@ public static class MetalBirdsQuestPolicy
             cancellationToken);
         if (string.IsNullOrWhiteSpace(canonicalQuestId))
             return 0;
+        if (eligibleQuestIds != null && !eligibleQuestIds.Contains(canonicalQuestId)) return 0;
 
         var motorLocation = await LoadLocationAsync(
             connection,

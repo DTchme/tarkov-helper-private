@@ -2626,6 +2626,40 @@ public partial class MainWindow : Window
     /// <summary>
     /// Manual API data update button click handler
     /// </summary>
+    private async void BtnAuditMapData_Click(object sender, RoutedEventArgs e)
+    {
+        var button = sender as Button;
+        try
+        {
+            if (button != null) button.IsEnabled = false;
+            var report = await MapDataAuditService.InspectAsync(DatabaseUpdateService.Instance.DatabasePath);
+            var content = new DockPanel { Margin = new Thickness(16) };
+            var copy = new Button { Content = "보고서 복사", Padding = new Thickness(12, 6, 12, 6), HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, 10) };
+            copy.Click += (_, _) => Clipboard.SetText(report.ToDisplayText());
+            DockPanel.SetDock(copy, Dock.Top);
+            content.Children.Add(copy);
+            content.Children.Add(new TextBox
+            {
+                Text = report.ToDisplayText(), IsReadOnly = true, TextWrapping = TextWrapping.Wrap,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto, FontSize = 14,
+                Background = new SolidColorBrush(Color.FromRgb(28, 28, 28)), Foreground = Brushes.White,
+                Padding = new Thickness(12)
+            });
+            new Window
+            {
+                Title = "지도 데이터 점검", Owner = this, Width = 1000, Height = 720,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Background = new SolidColorBrush(Color.FromRgb(35, 35, 35)), Content = content
+            }.ShowDialog();
+        }
+        catch (Exception ex)
+        {
+            _log.Error("Map data inspection failed", ex);
+            MessageBox.Show(this, "지도 데이터 점검 실패: " + ex.Message, "지도 데이터 점검", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally { if (button != null) button.IsEnabled = true; }
+    }
+
     private async void BtnUpdateApiData_Click(object sender, RoutedEventArgs e)
     {
         try
@@ -2635,6 +2669,7 @@ public partial class MainWindow : Window
             TxtApiUpdateStatus.Foreground = GetStatusBrush("TextSecondaryBrush", Brushes.Gray);
 
             var result = await DatabaseUpdateService.Instance.CheckAndUpdateAsync();
+            if (result.WasUpdated) await MapMarkerDbService.Instance.RefreshAsync();
 
             if (result.IsWarning)
             {
@@ -2673,7 +2708,7 @@ public partial class MainWindow : Window
                 }
                 else
                 {
-                    TxtApiUpdateStatus.Text = _loc.ApiUpToDate;
+                    TxtApiUpdateStatus.Text = result.Message;
                     TxtApiUpdateStatus.Foreground = GetStatusBrush("TextSecondaryBrush", Brushes.Gray);
                 }
             }

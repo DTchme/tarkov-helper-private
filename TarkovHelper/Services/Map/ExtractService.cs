@@ -66,7 +66,7 @@ public sealed class ExtractService
     {
         var extractions = _markerService.GetExtractionsForMap(mapKey);
         var transits = _markerService.GetTransitsForMap(mapKey);
-        return extractions.Concat(transits).Select(ConvertToMapExtract).ToList();
+        return extractions.Concat(transits).Where(IsVisible).Select(ConvertToMapExtract).ToList();
     }
 
     /// <summary>
@@ -109,7 +109,7 @@ public sealed class ExtractService
     public List<MapExtract> GetPmcExtractsForMap(string mapKey)
     {
         var markers = _markerService.GetMarkersForMapByType(mapKey, MarkerType.PmcExtraction);
-        return markers.Select(ConvertToMapExtract).ToList();
+        return markers.Where(IsVisible).Select(ConvertToMapExtract).ToList();
     }
 
     /// <summary>
@@ -118,7 +118,7 @@ public sealed class ExtractService
     public List<MapExtract> GetScavExtractsForMap(string mapKey)
     {
         var markers = _markerService.GetMarkersForMapByType(mapKey, MarkerType.ScavExtraction);
-        return markers.Select(ConvertToMapExtract).ToList();
+        return markers.Where(IsVisible).Select(ConvertToMapExtract).ToList();
     }
 
     /// <summary>
@@ -127,7 +127,7 @@ public sealed class ExtractService
     public List<MapExtract> GetSharedExtractsForMap(string mapKey)
     {
         var markers = _markerService.GetMarkersForMapByType(mapKey, MarkerType.SharedExtraction);
-        return markers.Select(ConvertToMapExtract).ToList();
+        return markers.Where(IsVisible).Select(ConvertToMapExtract).ToList();
     }
 
     /// <summary>
@@ -145,7 +145,7 @@ public sealed class ExtractService
     public List<MapExtract> GetAllExtracts()
     {
         return _markerService.AllMarkers
-            .Where(m => m.IsExtraction)
+            .Where(m => m.IsExtraction && IsVisible(m))
             .Select(ConvertToMapExtract)
             .ToList();
     }
@@ -168,9 +168,14 @@ public sealed class ExtractService
             Z = marker.Z,
             Top = null,
             Bottom = null,
-            FloorId = marker.FloorId
+            FloorId = marker.FloorId,
+            DetailsTooltip = marker.ExtractionDetails?.ToTooltip() ?? marker.Name,
+            RequiresReview = marker.ExtractionDetails?.Status == "review_required"
         };
     }
+
+    private static bool IsVisible(MapMarker marker) =>
+        marker.ExtractionDetails?.IsVisibleFor(ProfileService.Instance.CurrentProfile) ?? true;
 
     /// <summary>
     /// MarkerType을 ExtractFaction으로 변환합니다.
