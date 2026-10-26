@@ -64,7 +64,8 @@ public static class V3FlashDriveLocationPolicy
     public static async Task<int> ApplyAsync(
         SqliteConnection connection,
         SqliteTransaction transaction,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IReadOnlySet<string>? eligibleQuestIds = null)
     {
         var targets = new List<string>();
         await using (var select = new SqliteCommand(@"
@@ -73,13 +74,14 @@ public static class V3FlashDriveLocationPolicy
                    COALESCE(NULLIF(quest.NameEN, ''), quest.Name, ''),
                    objective.ObjectiveType,
                    objective.Description,
-                   objective.ItemName
+                   objective.ItemName, objective.QuestId
             FROM QuestObjectives objective
             JOIN Quests quest ON quest.Id=objective.QuestId", connection, transaction))
         await using (var reader = await select.ExecuteReaderAsync(cancellationToken))
         {
             while (await reader.ReadAsync(cancellationToken))
             {
+                if (eligibleQuestIds != null && !eligibleQuestIds.Contains(reader.GetString(6))) continue;
                 var objectiveId = reader.GetString(0);
                 var bsgId = reader.IsDBNull(1) ? null : reader.GetString(1);
                 var questName = reader.IsDBNull(2) ? null : reader.GetString(2);

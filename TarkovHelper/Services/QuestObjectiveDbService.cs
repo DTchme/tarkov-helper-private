@@ -126,11 +126,12 @@ public sealed class QuestObjectiveDbService
             var hasQuestBsgId = await ColumnExistsAsync(connection, "Quests", "BsgId");
             var hasQuestIsApproved = await ColumnExistsAsync(connection, "Quests", "IsApproved");
 
-            // 좌표 목표와, 좌표는 없지만 맵 정보가 명확한 처치 목표를 로드합니다.
-            // 처치 목표는 목록에만 표시되며 가짜 좌표/마커를 만들지 않습니다.
-            var listOnlyKillClause = hasObjectiveType
+            // Map-specific goals remain visible in the list even when their
+            // coordinates are unverified. Delivery/build/extraction-only rows
+            // do not acquire artificial map locations.
+            var listOnlyMapClause = hasObjectiveType
                 ? @"OR (
-                       LOWER(o.ObjectiveType) = 'kill'
+                       LOWER(o.ObjectiveType) IN ('kill', 'collect', 'visit', 'mark', 'stash', 'custom')
                        AND COALESCE(
                            NULLIF(TRIM(o.MapName), ''),
                            NULLIF(TRIM(q.Location), '')
@@ -153,7 +154,7 @@ public sealed class QuestObjectiveDbService
                 LEFT JOIN Quests q ON o.QuestId = q.Id
                 WHERE (o.LocationPoints IS NOT NULL AND o.LocationPoints != '')
                    {(hasOptionalPoints ? "OR (o.OptionalPoints IS NOT NULL AND o.OptionalPoints != '')" : "")}
-                   {listOnlyKillClause}";
+                   {listOnlyMapClause}";
 
             await using var cmd = new SqliteCommand(sql, connection);
             await using var reader = await cmd.ExecuteReaderAsync();
@@ -212,11 +213,13 @@ public sealed class QuestObjectiveDbService
                     objective.ObjectiveType = ParseObjectiveType(typeStr);
                 }
 
-                var isListOnlyKillObjective = objective.ObjectiveType == QuestObjectiveType.Kill &&
-                                              !string.IsNullOrWhiteSpace(objective.EffectiveMapName);
+                var isListOnlyMapObjective = (objective.ObjectiveType is
+                    QuestObjectiveType.Kill or QuestObjectiveType.Collect or QuestObjectiveType.Visit or
+                    QuestObjectiveType.Mark or QuestObjectiveType.Stash or QuestObjectiveType.Custom) &&
+                    !string.IsNullOrWhiteSpace(objective.EffectiveMapName);
 
-                // 좌표 목표 또는 맵이 명시된 목록 전용 처치 목표만 추가
-                if (objective.HasCoordinates || objective.HasOptionalPoints || isListOnlyKillObjective)
+                // 위치가 불명확해도 해당 맵의 목표 목록에서는 숨기지 않는다.
+                if (objective.HasCoordinates || objective.HasOptionalPoints || isListOnlyMapObjective)
                 {
                     newObjectives.Add(objective);
                 }

@@ -59,19 +59,21 @@ public static class PostmanPatLocationPolicy
     public static async Task<int> ApplyAsync(
         SqliteConnection connection,
         SqliteTransaction transaction,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IReadOnlySet<string>? eligibleQuestIds = null)
     {
         var targets = new List<string>();
         await using (var select = new SqliteCommand(@"
             SELECT objective.Id, quest.BsgId,
                    COALESCE(NULLIF(quest.NameEN, ''), quest.Name, ''),
-                   objective.ObjectiveType, objective.Description
+                   objective.ObjectiveType, objective.Description, objective.QuestId
             FROM QuestObjectives objective
             JOIN Quests quest ON quest.Id=objective.QuestId", connection, transaction))
         await using (var reader = await select.ExecuteReaderAsync(cancellationToken))
         {
             while (await reader.ReadAsync(cancellationToken))
             {
+                if (eligibleQuestIds != null && !eligibleQuestIds.Contains(reader.GetString(5))) continue;
                 if (IsTargetObjective(
                         reader.IsDBNull(1) ? null : reader.GetString(1),
                         reader.GetString(2),

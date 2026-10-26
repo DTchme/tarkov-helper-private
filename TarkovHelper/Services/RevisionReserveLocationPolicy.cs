@@ -67,19 +67,21 @@ public static class RevisionReserveLocationPolicy
     public static async Task<int> ApplyAsync(
         SqliteConnection connection,
         SqliteTransaction transaction,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IReadOnlySet<string>? eligibleQuestIds = null)
     {
         var targets = new List<(string Id, int Vehicle, bool IsMark)>();
         await using (var select = new SqliteCommand(@"
             SELECT objective.Id, quest.BsgId,
                    COALESCE(NULLIF(quest.NameEN, ''), quest.Name, ''),
-                   objective.ObjectiveType, objective.Description
+                   objective.ObjectiveType, objective.Description, objective.QuestId
             FROM QuestObjectives objective
             JOIN Quests quest ON quest.Id=objective.QuestId", connection, transaction))
         await using (var reader = await select.ExecuteReaderAsync(cancellationToken))
         {
             while (await reader.ReadAsync(cancellationToken))
             {
+                if (eligibleQuestIds != null && !eligibleQuestIds.Contains(reader.GetString(5))) continue;
                 var type = reader.IsDBNull(3) ? null : reader.GetString(3);
                 var vehicle = GetVehicleNumber(
                     reader.IsDBNull(1) ? null : reader.GetString(1),

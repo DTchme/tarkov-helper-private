@@ -79,6 +79,8 @@ public sealed class MapMarkerDbService
 
         try
         {
+            try { await ExtractionCatalogService.ApplyBundledAsync(_databasePath); }
+            catch (Exception ex) { _log.Warning($"Extraction overlay could not be applied; keeping existing markers: {ex.Message}"); }
             var connectionString = $"Data Source={_databasePath};Mode=ReadOnly";
             await using var connection = new SqliteConnection(connectionString);
             await connection.OpenAsync();
@@ -92,6 +94,16 @@ public sealed class MapMarkerDbService
 
             // 마커 로드
             var markers = await LoadAllMarkersAsync(connection);
+            if (await TableExistsAsync(connection, "MapExtractionDetails"))
+            {
+                var byId = markers.ToDictionary(marker => marker.Id);
+                await using var details = new SqliteCommand("SELECT MarkerId,DetailsJson FROM MapExtractionDetails", connection);
+                await using var reader = await details.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                    if (byId.TryGetValue(reader.GetString(0), out var marker))
+                        try { marker.ExtractionDetails = System.Text.Json.JsonSerializer.Deserialize<ExtractionCatalogEntry>(reader.GetString(1)); }
+                        catch (System.Text.Json.JsonException ex) { _log.Warning($"Invalid extraction details for {marker.Name}: {ex.Message}"); }
+            }
 
             // 새 딕셔너리 빌드 (기존 데이터 유지하면서)
             var newMarkersByMap = new Dictionary<string, List<MapMarker>>(StringComparer.OrdinalIgnoreCase);

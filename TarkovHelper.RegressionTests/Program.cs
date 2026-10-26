@@ -7,6 +7,39 @@ using TarkovHelper.Services.Map;
 
 var failures = new List<string>();
 
+if (args.Length == 2 && args[0] == "--apply-reviewed-map-data")
+{
+    using (var connection = new SqliteConnection($"Data Source={args[1]};Mode=ReadWrite"))
+    {
+        connection.Open();
+        using var transaction = connection.BeginTransaction();
+        var corrected = CuratedQuestDataService.ApplyAsync(connection, transaction).GetAwaiter().GetResult();
+        transaction.Commit();
+        Console.WriteLine($"Reviewed quest corrections: {corrected}");
+    }
+    Console.WriteLine($"Extraction entries imported: {ExtractionCatalogService.ApplyBundledAsync(args[1]).GetAwaiter().GetResult()}");
+    return 0;
+}
+
+if (args.Length >= 2 && args[0] == "--audit-map-data")
+{
+    var report = MapDataAuditService.InspectAsync(args[1]).GetAwaiter().GetResult();
+    if (args.Length == 3) File.WriteAllText(args[2], report.ToDisplayText());
+    Console.WriteLine($"Audited {report.QuestCount} quests and {report.ObjectiveCount} objectives. " +
+        $"Review candidates (not confirmed errors): {report.Issues.Count}");
+    foreach (var group in report.Issues.GroupBy(issue => issue.Kind)) Console.WriteLine($"{group.Key}: {group.Count()}");
+    return report.Issues.Any(issue => issue.Kind == "좌표 형식 확인") ? 1 : 0;
+}
+
+if (args.Length == 2 && args[0] == "--check-extraction-wiki")
+{
+    using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(90) };
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("TarkovHelper/1.5.41 (+English Wiki extraction check)");
+    var changed = ExtractionCatalogService.CheckWikiRevisionsAsync(args[1], client).GetAwaiter().GetResult();
+    Console.WriteLine($"New extraction review flags: {changed}");
+    return 0;
+}
+
 if (args.Length == 2 &&
     args[0].Equals("--validate-static-feed", StringComparison.OrdinalIgnoreCase))
 {
@@ -1893,6 +1926,8 @@ Run("user database read and write connections use isolated caches", () =>
         Directory.Delete(tempRoot, recursive: true);
     }
 });
+
+Run("reviewed map data matching, source guards and extraction regression checks", MapDataRegressionChecks.Run);
 
 if (failures.Count > 0)
 {

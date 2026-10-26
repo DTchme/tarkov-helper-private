@@ -161,8 +161,21 @@ public sealed class DatabaseUpdateService : IDisposable
             // only when they can supplement Wiki objectives with IDs/coordinates.
             var wikiService = new WikiQuestRefreshService(_httpClient);
             var wiki = await wikiService.RefreshAsync(_databasePath);
+            var extracts = await ExtractionCatalogService.ApplyBundledAsync(_databasePath);
+            var reviews = 0;
+            string? extractWarning = null;
+            try
+            {
+                reviews = await ExtractionCatalogService.CheckWikiRevisionsAsync(_databasePath, _httpClient);
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"Extraction Wiki revision check failed: {ex.Message}");
+                extractWarning = "탈출구 Wiki 변경 확인 실패 (기존 검증 자료 유지)";
+            }
+            var changed = wiki.WasChanged || extracts > 0 || reviews > 0;
 
-            if (wiki.WasChanged)
+            if (changed)
             {
                 var version = $"wiki-{DateTime.UtcNow:yyyyMMddTHHmmssZ}";
                 RemoteVersion = version;
@@ -176,8 +189,11 @@ public sealed class DatabaseUpdateService : IDisposable
                   $"개별 페이지 {wiki.IndividualPageCount}, 목표 {wiki.ObjectivesFilledCount}, " +
                   $"선행 조건 {wiki.PrerequisiteCount}"
                 : "영문 Wiki 퀘스트 데이터가 이미 최신입니다";
+            message += extracts > 0 ? $" · 탈출구 {extracts}개 반영" : " · 탈출구 검증 자료 유지";
+            if (reviews > 0) message += $" · Wiki 변경으로 탈출구 {reviews}개 재확인 필요 (지도 데이터 점검 참고)";
+            if (extractWarning != null) message += " · " + extractWarning;
 
-            var result = new UpdateCheckResult(true, wiki.WasChanged, message);
+            var result = new UpdateCheckResult(true, changed, message);
             UpdateCheckCompleted?.Invoke(this, result);
             return result;
         }

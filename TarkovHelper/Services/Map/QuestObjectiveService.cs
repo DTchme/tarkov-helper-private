@@ -116,16 +116,7 @@ public sealed class QuestObjectiveService
         foreach (var obj in allObjectives)
         {
             // 맵 필터링
-            bool isOnMap = false;
-            foreach (var loc in obj.Locations)
-            {
-                if (string.Equals(loc.MapName, mapName, StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(loc.MapNormalizedName, mapName, StringComparison.OrdinalIgnoreCase))
-                {
-                    isOnMap = true;
-                    break;
-                }
-            }
+            bool isOnMap = obj.AppliesToMap(mapName);
 
             if (!isOnMap) continue;
 
