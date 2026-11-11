@@ -132,33 +132,54 @@ public static class ExtractionCatalogService
                 throw new InvalidDataException($"잘못된 탈출구 자료: {marker.Name}");
     }
 
-    // Source changes need human/coordinate review: revision checks never claim automatic verification.
-    public static async Task<int> CheckWikiRevisionsAsync(string databasePath, HttpClient client,
-        CancellationToken cancellationToken = default)
+    // Compare only the relevant source content. Never move or delete markers here.
+    public static Task<int> CheckWikiRevisionsAsync(string databasePath, HttpClient client,
+        CancellationToken cancellationToken = default) => CheckWikiRevisionsAsync(databasePath, client, WikiMapEvidence.Baseline, cancellationToken);
+
+    internal static async Task<int> CheckWikiRevisionsAsync(string databasePath, HttpClient client,
+        Func<string, WikiMapEvidence.Evidence> baselineFor, CancellationToken cancellationToken = default)
     {
-        using var json = JsonDocument.Parse(await client.GetStringAsync(
-            "https://escapefromtarkov.fandom.com/api.php?action=query&prop=revisions&titles=Customs%7CLighthouse%7CMap%3ACustoms%7CMap%3ALighthouse&rvprop=ids&format=json&formatversion=2", cancellationToken));
-        var revisions = json.RootElement.GetProperty("query").GetProperty("pages").EnumerateArray()
-            .Where(page => page.TryGetProperty("revisions", out _)).ToDictionary(page => page.GetProperty("title").GetString()!,
-                page => page.GetProperty("revisions")[0].GetProperty("revid").GetInt64());
-        if (revisions.Count != 4) throw new InvalidDataException("탈출구 Wiki 판 정보를 모두 가져오지 못했습니다.");
+        var raw = await client.GetStringAsync(
+            "https://escapefromtarkov.fandom.com/api.php?action=query&prop=revisions&titles=Customs%7CLighthouse%7CMap%3ACustoms%7CMap%3ALighthouse&rvprop=ids%7Ccontent&rvslots=main&format=json&formatversion=2", cancellationToken);
+        var sources = WikiMapEvidence.ReadPages(raw).ToDictionary(page => page.Title, WikiMapEvidence.Describe);
+        var titles = new[] { "Customs", "Lighthouse", "Map:Customs", "Map:Lighthouse" };
+        if (!titles.All(sources.ContainsKey)) throw new InvalidDataException("탈출구 Wiki 자료를 모두 가져오지 못했습니다.");
         await using var connection = new SqliteConnection($"Data Source={databasePath};Mode=ReadWrite");
         await connection.OpenAsync(cancellationToken);
         await using var tx = connection.BeginTransaction();
+        await using (var schema = new SqliteCommand(@"
+            CREATE TABLE IF NOT EXISTS MapExtractionWikiObservation (Title TEXT PRIMARY KEY, Revision INTEGER NOT NULL);", connection, tx))
+            await schema.ExecuteNonQueryAsync(cancellationToken);
+        var previous = new Dictionary<string, long>();
+        await using (var observation = new SqliteCommand("SELECT Title,Revision FROM MapExtractionWikiObservation", connection, tx))
+        await using (var reader = await observation.ExecuteReaderAsync(cancellationToken))
+            while (await reader.ReadAsync(cancellationToken)) previous.Add(reader.GetString(0), reader.GetInt64(1));
+
+        bool IsCurrent(string title, long markerRevision) => sources[title].Revision >=
+            Math.Max(markerRevision, Math.Max(baselineFor(title).Revision, previous.GetValueOrDefault(title)));
+        bool IsDifferent(string title, bool calibration = false)
+        {
+            var baseline = baselineFor(title);
+            var live = sources[title];
+            return calibration ? live.CalibrationFingerprint != baseline.CalibrationFingerprint : live.Fingerprint != baseline.Fingerprint;
+        }
         var changed = new List<ExtractionCatalogEntry>();
         await using (var select = new SqliteCommand("SELECT DetailsJson FROM MapExtractionDetails", connection, tx))
         await using (var reader = await select.ExecuteReaderAsync(cancellationToken))
             while (await reader.ReadAsync(cancellationToken))
             {
                 var entry = JsonSerializer.Deserialize<ExtractionCatalogEntry>(reader.GetString(0));
-                if (entry == null || entry.Status == "review_required") continue;
+                // Pending PvE-only RUAF is a gameplay uncertainty, not a Wiki edit flag.
+                if (entry == null || entry.GameModes != "all") continue;
                 var page = entry.Type == "Transit" ? "Map:" + entry.Map : entry.Map;
-                if (revisions[page] > entry.WikiRevision ||
-                    (entry.PositionErrorMeters > 0 && revisions["Map:" + entry.Map] > entry.MapRevision))
-                {
-                    entry.Status = "review_required";
-                    changed.Add(entry);
-                }
+                var mapPage = "Map:" + entry.Map;
+                if (entry.WikiRevision > baselineFor(page).Revision || !IsCurrent(page, entry.WikiRevision) ||
+                    (entry.PositionErrorMeters > 0 && (entry.MapRevision > baselineFor(mapPage).Revision || !IsCurrent(mapPage, entry.MapRevision)))) continue;
+                var requiresReview = IsDifferent(page) || (entry.PositionErrorMeters > 0 && IsDifferent(mapPage, calibration: true));
+                var status = requiresReview ? "review_required" : "verified";
+                if (status == entry.Status) continue;
+                entry.Status = status;
+                changed.Add(entry);
             }
         foreach (var entry in changed)
         {
@@ -166,6 +187,15 @@ public static class ExtractionCatalogService
             update.Parameters.AddWithValue("@json", JsonSerializer.Serialize(entry));
             update.Parameters.AddWithValue("@id", entry.Id);
             await update.ExecuteNonQueryAsync(cancellationToken);
+        }
+        foreach (var title in titles.Where(title => sources[title].Revision > previous.GetValueOrDefault(title)))
+        {
+            await using var record = new SqliteCommand(@"
+                INSERT INTO MapExtractionWikiObservation VALUES (@title,@revision)
+                ON CONFLICT(Title) DO UPDATE SET Revision=excluded.Revision;", connection, tx);
+            record.Parameters.AddWithValue("@title", title);
+            record.Parameters.AddWithValue("@revision", sources[title].Revision);
+            await record.ExecuteNonQueryAsync(cancellationToken);
         }
         tx.Commit();
         return changed.Count;

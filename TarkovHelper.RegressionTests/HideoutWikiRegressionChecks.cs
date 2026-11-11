@@ -44,7 +44,8 @@ internal static class HideoutWikiRegressionChecks
             }
             using var client = new HttpClient(new WikiHandler(api));
             var partial = DatabaseUpdateService.RefreshSourcesAsync(database,client).GetAwaiter().GetResult();
-            Check(partial.Success && partial.IsWarning && partial.WasUpdated,"one unavailable source must not roll back the successfully refreshed hideout");
+            Check(partial.Success && partial.IsWarning && partial.WasUpdated,
+                "one unavailable source must not roll back the successfully refreshed hideout: " + partial.Message);
             Check(identities == Rows(database,"SELECT Id,StationId,Level,ItemId,Count FROM HideoutItemRequirements ORDER BY Id"),"refresh must preserve requirement IDs, item IDs and unchanged quantities");
             Check(otherData == Fingerprint(database,true),"hideout refresh must not modify quests, maps, station identities or prerequisites");
             var repeated = new HideoutWikiRefreshService(client).RefreshAsync(database).GetAwaiter().GetResult();

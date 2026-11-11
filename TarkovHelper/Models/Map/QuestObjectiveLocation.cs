@@ -143,6 +143,9 @@ public sealed class TaskObjectiveWithLocation
     [JsonPropertyName("locations")]
     public List<QuestObjectiveLocation> Locations { get; set; } = new();
 
+    [JsonIgnore]
+    public bool LocationNeedsReview { get; set; }
+
     /// <summary>
     /// 좌표가 없어도 목록에 표시할 수 있도록 DB에 지정된 적용 맵 이름을 보존합니다.
     /// 이 값만 있는 목표는 지도 마커를 만들지 않습니다.

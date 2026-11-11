@@ -125,6 +125,7 @@ public sealed class QuestObjectiveDbService
             var hasQuestNameJa = await ColumnExistsAsync(connection, "Quests", "NameJa");
             var hasQuestBsgId = await ColumnExistsAsync(connection, "Quests", "BsgId");
             var hasQuestIsApproved = await ColumnExistsAsync(connection, "Quests", "IsApproved");
+            var hasLocationReview = await TableExistsAsync(connection, "CuratedQuestVerification");
 
             // Map-specific goals remain visible in the list even when their
             // coordinates are unverified. Delivery/build/extraction-only rows
@@ -147,7 +148,8 @@ public sealed class QuestObjectiveDbService
                        {(hasQuestNameJa ? "q.NameJa as QuestNameJa," : "NULL as QuestNameJa,")}
                        q.Trader as TraderName,
                        {(hasQuestBsgId ? "q.BsgId" : "NULL")} as QuestBsgId,
-                       {(hasQuestIsApproved ? "q.IsApproved" : "1")} as QuestIsApproved
+                       {(hasQuestIsApproved ? "q.IsApproved" : "1")} as QuestIsApproved,
+                       {(hasLocationReview ? "EXISTS (SELECT 1 FROM CuratedQuestVerification v WHERE v.QuestId=o.QuestId AND v.Status='review_required')" : "0")} as LocationNeedsReview
                        {(hasOptionalPoints ? ", o.OptionalPoints" : "")}
                        {(hasObjectiveType ? ", o.ObjectiveType" : "")}
                 FROM QuestObjectives o
@@ -188,7 +190,8 @@ public sealed class QuestObjectiveDbService
                     QuestName = questName,
                     QuestNameKo = reader.IsDBNull(7) ? null : reader.GetString(7),
                     QuestNameJa = reader.IsDBNull(8) ? null : reader.GetString(8),
-                    TraderName = traderName
+                    TraderName = traderName,
+                    LocationNeedsReview = reader.GetInt32(12) == 1
                 };
 
                 // Parse LocationPoints JSON
@@ -196,7 +199,7 @@ public sealed class QuestObjectiveDbService
                 objective.LocationPointsJson = locationJson;
 
                 // Track column index for optional fields
-                int nextIndex = 12;
+                int nextIndex = 13;
 
                 // Parse OptionalPoints JSON if column exists
                 if (hasOptionalPoints && reader.FieldCount > nextIndex)
@@ -210,7 +213,8 @@ public sealed class QuestObjectiveDbService
                 if (hasObjectiveType && reader.FieldCount > nextIndex)
                 {
                     var typeStr = reader.IsDBNull(nextIndex) ? "Custom" : reader.GetString(nextIndex);
-                    objective.ObjectiveType = ParseObjectiveType(typeStr);
+                    objective.ObjectiveType = MapObjectiveSemantics.IsKill(typeStr, objective.Description)
+                        ? QuestObjectiveType.Kill : ParseObjectiveType(typeStr);
                 }
 
                 var isListOnlyMapObjective = (objective.ObjectiveType is

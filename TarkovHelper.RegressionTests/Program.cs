@@ -7,6 +7,28 @@ using TarkovHelper.Services.Map;
 
 var failures = new List<string>();
 
+if (args.Length == 3 && args[0] == "--build-map-evidence")
+{
+    var sources = WikiMapEvidence.ReadPages(File.ReadAllText(args[1])).GroupBy(page => page.Title).ToList();
+    if (sources.Count != 10) throw new InvalidDataException("Expected six quest and four map sources.");
+    var evidence = sources.ToDictionary(group => group.Key, group =>
+    {
+        var revisions = group.OrderByDescending(page => page.Revision).Select(WikiMapEvidence.Describe).ToArray();
+        if (revisions.Skip(1).Any(old => old with { Revision = revisions[0].Revision } != revisions[0]))
+            throw new InvalidDataException($"Relevant source content changed; review the coordinates first: {group.Key}");
+        return revisions[0];
+    });
+    File.WriteAllText(args[2], System.Text.Json.JsonSerializer.Serialize(evidence,
+        new System.Text.Json.JsonSerializerOptions { WriteIndented = true }) + Environment.NewLine);
+    return 0;
+}
+
+if (args.Length == 2 && args[0] == "--repair-map-locations")
+{
+    Console.WriteLine($"Verified location rows applied: {CuratedQuestDataService.RestoreBundledLocationsAsync(args[1]).GetAwaiter().GetResult()}");
+    return 0;
+}
+
 if (args.Length == 3 && args[0] == "--build-hideout-snapshot")
 {
     var snapshot = HideoutWikiParser.ParseApiResponse(File.ReadAllText(args[1]));
@@ -58,7 +80,7 @@ if (args.Length == 2 && args[0] == "--check-extraction-wiki")
     using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(90) };
     client.DefaultRequestHeaders.UserAgent.ParseAdd("TarkovHelper/1.5.41 (+English Wiki extraction check)");
     var changed = ExtractionCatalogService.CheckWikiRevisionsAsync(args[1], client).GetAwaiter().GetResult();
-    Console.WriteLine($"New extraction review flags: {changed}");
+    Console.WriteLine($"Changed extraction review flags: {changed}");
     return 0;
 }
 

@@ -11,7 +11,7 @@ public sealed record MapDataAuditReport(int QuestCount, int ObjectiveCount, IRea
     {
         var text = new StringBuilder();
         text.AppendLine($"퀘스트 {QuestCount}개 / 목표 {ObjectiveCount}개 / 확인 대상 {Issues.Count}개");
-        text.AppendLine("확인 대상은 오류 확정 건수가 아닙니다. 좌표가 없는 목표는 지도 목록의 '위치 미확인'으로 표시됩니다.");
+        text.AppendLine("확인 대상은 오류 확정 건수가 아닙니다. 고정 위치가 없는 처치 목표는 지도 목록에만 표시되며 위치 미확인 건수에 포함되지 않습니다.");
         text.AppendLine("게임의 진행 상태나 완료 체크는 이 점검으로 변경되지 않습니다.\n");
         foreach (var group in Issues.GroupBy(issue => issue.Kind))
         {
@@ -71,6 +71,7 @@ public static class MapDataAuditService
                 }
                 if (invalid) issues.Add(new(name, map, "좌표 형식 확인", description));
                 else if (pointCount == 0 && (type.ToLowerInvariant() is "visit" or "mark" or "stash") &&
+                    !MapObjectiveSemantics.IsKill(type, description) &&
                     !string.IsNullOrWhiteSpace(map) && !Models.Map.MapConfig.IsAnyMapName(map))
                     issues.Add(new(name, map, "위치 미확인", description));
                 if (!reader.IsDBNull(7))

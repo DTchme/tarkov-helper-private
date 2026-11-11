@@ -156,6 +156,8 @@ public class QuestObjective
     /// </summary>
     public bool HasCoordinates => LocationPoints.Count > 0;
 
+    public bool LocationNeedsReview { get; set; }
+
     /// <summary>
     /// Whether this objective has optional points
     /// </summary>

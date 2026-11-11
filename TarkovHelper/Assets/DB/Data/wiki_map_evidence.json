@@ -1,0 +1,52 @@
+{
+  "Customs": {
+    "Revision": 363971,
+    "Fingerprint": "E20877C937C9D76BDC19846E75625624E97BC4AA25BABF5404CFC54927DB302A",
+    "CalibrationFingerprint": null
+  },
+  "Lighthouse": {
+    "Revision": 367830,
+    "Fingerprint": "8AC9BDAD353163F7CBFD07C7318BDCC7635AE612A746F79170568BA2A8FBA27C",
+    "CalibrationFingerprint": null
+  },
+  "Postman Pat - Part 1": {
+    "Revision": 365707,
+    "Fingerprint": "71087FA61E1C3BA4D67E48BBFD6607AADCFC4F127948E3F88B2081F786D7D621",
+    "CalibrationFingerprint": null
+  },
+  "Fuel Crisis": {
+    "Revision": 365458,
+    "Fingerprint": "66B9C1A5E1DF942A2060066A7E726EBD5A24E257EB91DB8EDC6AF30DA80852E0",
+    "CalibrationFingerprint": null
+  },
+  "Metal Birds": {
+    "Revision": 367733,
+    "Fingerprint": "92C3EFF4795774FCA221D581D9B280B317A0053083BB2E0F6CF0994E702933B8",
+    "CalibrationFingerprint": null
+  },
+  "Revision - Reserve": {
+    "Revision": 367467,
+    "Fingerprint": "CFFAE4272718A334F733B9DF9A24EC7C347B1561BF74FAB004DC41E4B30EF097",
+    "CalibrationFingerprint": null
+  },
+  "Map:Customs": {
+    "Revision": 363978,
+    "Fingerprint": "4FDA61944F4CBA4356FF007C99544994C7EB31B7013D903F620D18E8E3A8613A",
+    "CalibrationFingerprint": "14FBF361A00CA25B3A20EB9225FB984B172984F40FEE6FA6CBB8BA3566F150F5"
+  },
+  "Map:Lighthouse": {
+    "Revision": 367038,
+    "Fingerprint": "4D6ACDDEA1A8841A3F97F4C5B76EEE1B2EA0E9C3A71523FFDED759A0E9A77435",
+    "CalibrationFingerprint": "2A73895101ED630B2AE52EB862BA9D8BBC0FE35D8B46A761BEE53FD37B4B7442"
+  },
+  "To the Light - Getting Acquainted": {
+    "Revision": 365991,
+    "Fingerprint": "67C5B0348659C3ECDE459A5A788AF3406A1A3C75769E153C2E1B6B62A0C50D7A",
+    "CalibrationFingerprint": null
+  },
+  "Make Amends": {
+    "Revision": 365604,
+    "Fingerprint": "C415B164D0BC5EC781627A5CB860C9E66BC4BC96D42C9C994C709BA13FE252CE",
+    "CalibrationFingerprint": null
+  }
+}

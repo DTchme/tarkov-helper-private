@@ -328,6 +328,9 @@ public class MapQuestMarkerManager
 
     #region Private Methods - Marker Creation
 
+    private static string ReviewWarning(TaskObjectiveWithLocation objective) =>
+        objective.LocationNeedsReview ? "\n위치 재검증 필요: 기존 핀이 최신 공략과 다를 수 있습니다." : "";
+
     private FrameworkElement CreateQuestMarker(TaskObjectiveWithLocation objective, QuestObjectiveLocation location, ScreenPosition screenPos, bool isOnCurrentFloor = true)
     {
         // 설정에서 커스텀 색상 가져오기
@@ -597,7 +600,7 @@ public class MapQuestMarkerManager
             ? objective.TaskNameKo
             : objective.TaskName;
         var floorIndicator = !isOnCurrentFloor ? " ⬆⬇" : "";
-        canvas.ToolTip = $"{tooltipName}\n{tooltipDesc}{floorIndicator}";
+        canvas.ToolTip = $"{tooltipName}\n{tooltipDesc}{floorIndicator}{ReviewWarning(objective)}";
 
         return canvas;
     }
@@ -760,7 +763,7 @@ public class MapQuestMarkerManager
             ? objective.TaskNameKo
             : objective.TaskName;
         var floorIndicator = !isOnCurrentFloor ? " ⬆⬇" : "";
-        container.ToolTip = $"[영역] {tooltipName}\n{tooltipDesc}{floorIndicator}";
+        container.ToolTip = $"[영역] {tooltipName}\n{tooltipDesc}{floorIndicator}{ReviewWarning(objective)}";
 
         return container;
     }
@@ -916,7 +919,7 @@ public class MapQuestMarkerManager
             ? objective.TaskNameKo
             : objective.TaskName;
         var floorIndicator = !isOnCurrentFloor ? " ⬆⬇" : "";
-        canvas.ToolTip = $"[선택{orIndex}] {tooltipName}\n{tooltipDesc}{floorIndicator}";
+        canvas.ToolTip = $"[선택{orIndex}] {tooltipName}\n{tooltipDesc}{floorIndicator}{ReviewWarning(objective)}";
 
         return canvas;
     }
