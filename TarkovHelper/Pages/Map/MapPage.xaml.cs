@@ -3949,7 +3949,8 @@ public class QuestObjectiveViewModel
 
         TypeDisplay = objective.Type == "kill" ? loc.Kill : GetTypeDisplay(objective.Type);
         TypeBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(objective.MarkerColor));
-        ListOnlyDisplay = objective.Type == "kill" ? "목록 전용" : "위치 미확인";
+        ListOnlyDisplay = objective.Type == "kill" ? "목록 전용" :
+            objective.LocationNeedsReview ? "위치 재검증" : "위치 미확인";
 
         // 체크박스 상태 설정 (ObjectiveId 기반 - 동일 설명 목표 개별 추적)
         if (progressService != null)
@@ -3996,7 +3997,8 @@ public class QuestObjectiveViewModel
             IsEnabled = true;
         }
 
-        ListOnlyBadgeVisibility = IsOnCurrentMap && objective.Locations.Count == 0
+        ListOnlyBadgeVisibility = IsOnCurrentMap && (objective.Locations.Count == 0 ||
+            (objective.Type != "kill" && objective.LocationNeedsReview))
             ? Visibility.Visible
             : Visibility.Collapsed;
 

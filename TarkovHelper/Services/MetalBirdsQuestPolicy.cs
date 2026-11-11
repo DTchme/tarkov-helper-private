@@ -43,6 +43,45 @@ public static class MetalBirdsQuestPolicy
             ["fandomobj_20aaf31bfe5af7cbd7bbf09"] = GyroscopeAcquireObjectiveId
         };
 
+    // The installed Wiki DB may already have a different but valid objective
+    // layout. Repair only the missing locations without rebuilding those rows.
+    internal static async Task<int> RestoreLocationsAsync(SqliteConnection connection, SqliteTransaction transaction,
+        IReadOnlySet<string> eligibleQuestIds, CancellationToken cancellationToken)
+    {
+        var targets = new List<(string QuestId, string Id, string Kind)>();
+        await using (var select = new SqliteCommand(@"
+            SELECT q.Id,o.Id,COALESCE(o.ItemName,'')||' '||o.Description
+            FROM QuestObjectives o JOIN Quests q ON q.Id=o.QuestId
+            WHERE q.BsgId=@bsg AND q.NameEN='Metal Birds' AND q.Trader='Peacekeeper'
+              AND o.ObjectiveType='Collect' AND COALESCE(o.MapName,'') IN ('','Woods');", connection, transaction))
+        {
+            select.Parameters.AddWithValue("@bsg", GameQuestId);
+            await using var reader = await select.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                var questId = reader.GetString(0);
+                if (!eligibleQuestIds.Contains(questId)) continue;
+                var text = reader.GetString(2);
+                var motor = text.Contains("motor controller", StringComparison.OrdinalIgnoreCase) || text.Contains("모터 컨트롤러");
+                var gyro = text.Contains("gyroscope", StringComparison.OrdinalIgnoreCase) || text.Contains("자이로스코프");
+                if (motor != gyro) targets.Add((questId, reader.GetString(1), motor ? "motor" : "gyro"));
+            }
+        }
+        var changed = 0;
+        foreach (var group in targets.GroupBy(target => (target.QuestId, target.Kind)).Where(group => group.Count() == 1))
+        {
+            var target = group.Single();
+            await using var update = new SqliteCommand(@"
+                UPDATE QuestObjectives SET MapName='Woods',LocationPoints=@points WHERE Id=@id
+                AND COALESCE(TRIM(LocationPoints),'') IN ('','[]')
+                AND COALESCE(TRIM(OptionalPoints),'') IN ('','[]');", connection, transaction);
+            update.Parameters.AddWithValue("@points", target.Kind == "motor" ? DefaultMotorLocation : DefaultGyroscopeLocation);
+            update.Parameters.AddWithValue("@id", target.Id);
+            changed += await update.ExecuteNonQueryAsync(cancellationToken);
+        }
+        return changed;
+    }
+
     /// <summary>
     /// Applies the current quest identity and objective set to tarkov_data.db.
     /// Safe to call after either API or Wiki refresh; repeated calls are idempotent.

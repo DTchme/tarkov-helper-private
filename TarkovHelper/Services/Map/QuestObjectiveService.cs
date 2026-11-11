@@ -181,6 +181,7 @@ public sealed class QuestObjectiveService
             TaskNormalizedName = taskNormalizedName,
             TaskName = obj.QuestName,
             TaskNameKo = obj.QuestNameKo,
+            LocationNeedsReview = obj.LocationNeedsReview,
             Locations = new List<QuestObjectiveLocation>(),
             ApplicableMapNames = MapConfig.SplitMapExpression(obj.EffectiveMapName)
                 .Where(name => !MapConfig.IsAnyMapName(name))

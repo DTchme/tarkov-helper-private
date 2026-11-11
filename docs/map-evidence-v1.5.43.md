@@ -1,0 +1,12 @@
+# Map data review — v1.5.43
+
+On 2026-11-11 the English Wiki revisions shipped in v1.5.41 were compared with the latest revisions. The map location, objectives, and guide (including image references and captions) of the six corrected quest pages were unchanged. Lighthouse's article edit affected the key table; its interactive map renamed a non-extraction marker. The extraction table, transit markers, and coordinate calibration inputs were unchanged. Customs still does not list RUAF Roadblock; PvE availability remains unverified.
+
+`wiki_map_evidence.json` records the relevant content fingerprints, not entire articles. Regenerate it with `--build-map-evidence <saved MediaWiki revisions response> <out.json>` only after checking the old and latest source pairs. The generator fails on a difference in relevant content; revalidate the affected positions before updating the baseline. Treat fingerprint changes as evidence that a position *might* need review, not proof that it moved.
+
+- A Wiki refresh records the source fingerprint and its revision in the same transaction as the quest update. Matching content keeps curated pins eligible even on a newer revision. Different or unavailable relevant content blocks older corrections without wiping saved points. The map list and individual marker tooltips distinguish a prior pin that now needs review.
+- The first launch repairs missing verified locations in the application DB transactionally. It does not regenerate the installed objective IDs or access the user database. PvE, PvP and seasonal progress, custom markers and calibrated maps are separate from this repair.
+- Exit review compares the extraction table and interactive transit markers separately. It also compares the interactive calibration inputs for the estimated Lighthouse vehicle marker. Unrelated page edits and older cached replies do not invalidate the corresponding groups. RUAF retains its independent pending status.
+- Legacy `Visit` goals phrased as “locate and neutralize” or “locate and shoot down” stay in the map list as kill goals without counting as missing fixed coordinates. No new coordinates are guessed.
+
+On a consistent copy of the installed v1.5.42 database, this restored locations for 16 objectives without changing any of the 2,735 objective IDs. Repeating the repair did nothing. The live English Wiki check cleared 16 unrelated extraction flags. The audit went from 424 to 368 candidates: 324 without confirmed fixed locations, 43 unresolved objective matches, and the one pending PvE extraction.

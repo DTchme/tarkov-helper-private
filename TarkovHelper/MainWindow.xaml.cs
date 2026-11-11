@@ -134,6 +134,12 @@ public partial class MainWindow : Window
             }
         }
 
+        else
+        {
+            try { await CuratedQuestDataService.RestoreBundledLocationsAsync(dbPath); }
+            catch (Exception ex) { _log.Error($"Verified quest map repair failed: {ex.Message}"); }
+        }
+
         // 2. 서비스 리셋 및 초기화
         QuestProgressService.ResetInstance();
         ItemInventoryService.ResetInstance();

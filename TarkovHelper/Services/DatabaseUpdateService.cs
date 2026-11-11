@@ -217,7 +217,7 @@ public sealed class DatabaseUpdateService : IDisposable
             changed |= imported > 0;
             var reviews = await ExtractionCatalogService.CheckWikiRevisionsAsync(databasePath,client);
             changed |= reviews > 0;
-            notes.Add($"탈출구 반영 {imported}, 재확인 {reviews}");
+            notes.Add($"탈출구 반영 {imported}, 검증 상태 변경 {reviews}");
         });
         return new(succeeded > 0, changed, string.Join(" · ", notes.Concat(warnings)), succeeded > 0 && warnings.Count > 0);
     }

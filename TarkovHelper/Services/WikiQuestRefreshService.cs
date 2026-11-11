@@ -521,7 +521,8 @@ public sealed class WikiQuestRefreshService
             KappaRequired: kappaRequired,
             RawObjectives: canonicalObjectives,
             MinimumLevel: requirementSummary.MinimumLevel,
-            UnverifiedRequirements: requirementSummary.UnverifiedRequirements.ToList());
+            UnverifiedRequirements: requirementSummary.UnverifiedRequirements.ToList(),
+            LocationFingerprint: CuratedQuestDataService.TracksSource(title) ? WikiMapEvidence.QuestFingerprint(wikiText) : null);
     }
 
     private static InfoboxField ExtractInfoboxField(string wikiText, string fieldPattern)
@@ -1007,6 +1008,8 @@ public sealed class WikiQuestRefreshService
             foreach (var row in rows.Where(item => item.IsIndividualPage))
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                if (row.RevisionId is long revision)
+                    await CuratedQuestDataService.SaveEvidenceAsync(connection, tx, row.Name, revision, row.LocationFingerprint, cancellationToken);
                 if (!existing.TryGetValue(NormalizeQuestName(row.Name), out var current))
                     continue;
 
@@ -1507,7 +1510,7 @@ public sealed class WikiQuestRefreshService
     private static string InferObjectiveType(string objective)
     {
         var value = objective.ToLowerInvariant();
-        if (Regex.IsMatch(value, @"\b(eliminate|kill)\b") || value.Contains("처치")) return "Kill";
+        if (MapObjectiveSemantics.IsKill(null, objective) || Regex.IsMatch(value, @"\b(eliminate|kill)\b") || value.Contains("처치")) return "Kill";
         if (Regex.IsMatch(value, @"\b(stash|plant|place)\b") || value.Contains("숨기") || value.Contains("설치")) return "Stash";
         if (Regex.IsMatch(value, @"\b(hand over|deliver)\b") || value.Contains("전달")) return "HandOver";
         if (Regex.IsMatch(value, @"\b(find|obtain|acquire)\b") || value.Contains("획득") || value.Contains("찾")) return "Collect";
@@ -1685,7 +1688,8 @@ public sealed class WikiQuestRefreshService
         List<WikiPrerequisite>? Prerequisites = null,
         bool PrerequisitesResolved = true,
         int? MinimumLevel = null,
-        List<string>? UnverifiedRequirements = null)
+        List<string>? UnverifiedRequirements = null,
+        string? LocationFingerprint = null)
     {
         public IReadOnlyList<string> PreviousQuestNames =>
             Previous is null ? Array.Empty<string>() : Previous;
